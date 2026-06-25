@@ -5,8 +5,10 @@
 > HID ambient-light sensor, and GNOME's existing stack does the brightness curve, smoothing, the
 > Settings/quick-settings UI, and the hardware write. **Brightness only** (no colour temperature).
 
-**Status (2026-06-25):** the architecture is **validated end-to-end** (§4); the camera→lux daemon
-is not yet built. This supersedes the earlier "iris writes brightness" (Tier-2) approach — see §2.
+**Status (2026-06-25):** **MVP built & validated end-to-end** (§4) — the daemon (`python/src/iris/`)
+feeds real camera-derived lux to the virtual ALS and `monitor-sensor` sees it live. Not yet wired to
+GNOME's brightness *response*, and runs via sudo pending a `/dev/uhid` udev rule (see STATUS). This
+supersedes the earlier "iris writes brightness" (Tier-2) approach — see §2.
 Provenance: original brief [DESIGN-v1.md](./DESIGN-v1.md); empirical results [FINDINGS.md](./FINDINGS.md);
 progress + open questions [STATUS.md](./STATUS.md).
 

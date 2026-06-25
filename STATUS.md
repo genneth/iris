@@ -25,19 +25,26 @@ _Updated 2026-06-25. Architecture validated; daemon not yet built._
   split; `./dev.sh` runs ruff + mypy + pytest + rustfmt + clippy, enforced by a `hooks/pre-commit`
   gate (pure bash — the host has no `make`).
 
-## ⏳ Next (build)
+- **MVP daemon built & validated end-to-end (2026-06-25).** `python/src/iris/` (`brightness`,
+  `camera`, `virtual_als`, `daemon`) holds the webcam streaming and feeds real camera-derived lux to
+  the virtual ALS; `monitor-sensor` reports live ambient lux (~46–56 in the dim test room) through
+  iio-sensor-proxy. Power-tuned for continuous streaming: smallest size 320×180 + manual exposure +
+  auto-WB off. (fps is firmware-locked at 30, so the continuous-stream draw is at its floor; the big
+  lever — duty-cycling — is deliberately parked for this MVP: steady LED, camera held open.)
 
-1. **`src/iris/` package:** `sense` (camera → lux), `device` (the virtual HID ALS, lifted from the
-   spike), and a daemon loop. Promote the validated logic out of `scripts/`.
-2. **Camera → lux:** manual exposure + histogram/IQR brightness (per clight); calibrate to a
-   plausible, monotonic lux scale (gsd-power supplies the curve, so this need not be absolute).
-3. **Daemon behaviour:** sample every 5–15 s (adaptive); open → grab 1 frame → close; `EBUSY`
-   back-off so video calls win the camera.
-4. **Deployment:** a udev rule for `/dev/uhid` (→ run as a user service, no root) + a `systemd --user`
-   unit bound to the graphical session.
-5. **Live integration test:** enable GNOME "Automatic Brightness" and confirm the backlight actually
-   tracks the camera (the one end-to-end test we haven't run — we've proven up to SensorProxy, not
-   the brightness response itself).
+## ⏳ Next
+
+1. **Live GNOME brightness test — the one end-to-end step left:** enable GNOME "Automatic Brightness"
+   and confirm the *backlight* actually tracks the camera (we've proven up to SensorProxy, not the
+   brightness response itself).
+2. **luma → lux calibration:** tune the mapping (today a placeholder linear 0..1000 lux) so
+   gsd-power's curve feels natural; address the screen-feedback loop.
+3. **Deployment:** a udev rule for `/dev/uhid` so the daemon runs as a `systemd --user` service
+   (it currently needs sudo), plus the unit bound to the graphical session.
+4. **Measure power on battery** (`current_now`×`voltage_now`) to quantify the continuous-stream draw
+   and decide whether it's acceptable or we revisit duty-cycling.
+5. **Revisit the parked trade-offs** once the above works: open/close vs continuous (LED blink vs
+   steady), camera contention / `EBUSY` back-off, adaptive cadence.
 
 ## ❓ Open questions / considerations
 
