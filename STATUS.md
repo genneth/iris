@@ -32,20 +32,27 @@ _Updated 2026-06-25. Architecture validated; daemon not yet built._
   auto-WB off. (fps is firmware-locked at 30, so the continuous-stream draw is at its floor; the big
   lever — duty-cycling — is deliberately parked for this MVP: steady LED, camera held open.)
 
+- **Live GNOME brightness test PASSED (2026-06-25) — the full loop works.** With the daemon
+  running, covering the camera (lux→7) dropped the panel backlight 240→145/400 (60%→36%); uncovering
+  / bright light (lux→19–188) raised it back to ~240. So GNOME's *native* auto-brightness moves the
+  real `intel_backlight` in response to the webcam: **camera → virtual ALS → iio-sensor-proxy →
+  gsd-power → backlight**, end to end, prompt (~2 s), no feedback-loop runaway. (Needed a nudge —
+  toggling `ambient-enabled` — to make gsd-power claim the freshly-appeared sensor.) Caveat: the
+  swing was only ~36–60% (placeholder lux mapping squeezed through gsd's curve) → calibration next.
+
 ## ⏳ Next
 
-1. **Live GNOME brightness test — the one end-to-end step left:** enable GNOME "Automatic Brightness"
-   and confirm the *backlight* actually tracks the camera (we've proven up to SensorProxy, not the
-   brightness response itself).
-2. **luma → lux calibration:** tune the mapping (today a placeholder linear 0..1000 lux) so
-   gsd-power's curve feels natural; address the screen-feedback loop.
-3. **Deployment:** a udev rule for `/dev/uhid` so the daemon runs as a `systemd --user` service
-   (it currently needs sudo), plus the unit bound to the graphical session.
-4. **Power: re-measure rigorously.** A first battery-gauge pass put the webcam at **~1 W** (very
-   rough — see Open questions). Redo properly: many interleaved on/off cycles on a *genuinely idle*
-   system, averaged to statistical significance — or an external USB power meter — before trusting it.
-5. **Revisit the parked trade-offs** once the above works: open/close vs continuous (LED blink vs
-   steady), camera contention / `EBUSY` back-off, adaptive cadence.
+1. **luma → lux calibration (now the priority).** The live test worked but the backlight only swung
+   ~36–60% — our placeholder linear `0..1000` lux through gsd-power's curve compresses the range.
+   Tune the luma→lux mapping (and watch the screen-feedback loop) so dark rooms go genuinely dim and
+   bright rooms bright.
+2. **Deployment:** a udev rule for `/dev/uhid` so the daemon runs as a `systemd --user` service
+   (currently needs sudo), plus the unit bound to the graphical session — and decide how to get
+   gsd-power to claim the sensor at startup (the `ambient-enabled` toggle, or appearing before login).
+3. **Power: re-measure rigorously** (see Open questions): interleaved on/off cycles on a genuinely
+   idle system, or an external USB meter.
+4. **Revisit the parked trade-offs:** open/close vs continuous (LED blink vs steady), camera
+   contention / `EBUSY` back-off, adaptive cadence.
 
 ## ❓ Open questions / considerations
 
