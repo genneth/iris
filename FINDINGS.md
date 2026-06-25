@@ -119,14 +119,82 @@ cascades further than just the output:
   → higher measured "ambient" → risk of runaway. The brightness loop must damp this
   (heavy smoothing, dead-band, or subtract a model of our own current brightness).
 
+## Pixel reduction & dynamic range (2026-06-25, `scripts/probe_pixels.py`)
+
+> Extends/supersedes the v1 "Calibration" section above on two points: the downstream EMA is
+> **τ ≈ 1.6 s**, not ~10 s (decoded in [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md)), and a single fixed
+> exposure is **not** sufficient — auto-ranging is required.
+
+**Exposure brackets** (320×180, gain 64; `exposure_absolute` is in **100 µs units**, so high exposure
+throttles framerate — exp 10000 ≈ 1 s/frame):
+
+| condition | well-exposed band | elsewhere |
+|---|---|---|
+| dim room (LED, evening) | exp **5000–10000** (floor 7%→1.5%, clip 0) | floors below ~2000; never clips, even at 10000 |
+| bright (phone flashlight on scene) | exp **500–1000** (clip <1%, floor <8%) | clips at exp ≥2000: 31% → 51% → **98%** at 10000 |
+
+- **Auto-ranging exposure (+gain) is required.** One fixed exposure can't span dark→bright: the dim
+  room needs ~10× the exposure the flashlight scene tolerates. The 50–10000 range (200×) plus gain
+  covers the crossover cleanly and monotonically; dropping exposure 10000→500 took the bright scene
+  from **98% clipped → clean**, so ranging escapes clipping. Luma is ~linear in exposure in the
+  unsaturated band (a clean gain knob). *(Flashlight proved the mechanism, not a calibrated top — a
+  real daytime/window anchor is still pending.)*
+
+**Pixel → scalar.** The YUYV Y is **gamma-encoded** (Y' ≈ luminance^(1/2.2)), so a plain mean averages
+in a non-linear, contrast-biased space. Candidates logged per frame: arithmetic gamma mean (`mean_g`,
+the v1 `frame_brightness`), gamma-decoded linear-luminance mean (`lin`), and log-average / geometric
+mean (`logmean`/`geo`). The high-contrast flashlight blob (mostly-dark frame + bright spot; exp 500,
+p10/p50/p90 = 18/26/136) split them hard:
+
+| scalar | value | reading |
+|---|---|---|
+| `lin` (mean luminance) | 0.074 | "bright" — the spot dominates *total* light |
+| `mean_g` (gamma mean) | 0.174 | in between |
+| `logmean`/`geo` (log-average) | 0.002 | "as dark as the empty room" — ignores the spot |
+
+- **Decision: report `logmean`** (mean of log Y'_norm = log of the geometric-mean luminance). It is
+  (a) robust to transient bright spots — the main cause of twitchy auto-brightness; (b) already the
+  log-compressed signal gsd-power wants (BRIGHTNESS-MATH §3); (c) honest, given the webcam is not a
+  calibrated forward-facing ALS. **Trade-off:** under-reports a genuinely bright but non-uniform room
+  (e.g. a sunny window) → revisit toward a high percentile or trimmed *linear* mean if a daytime test
+  shows under-reading. Rejected: `lin` (faithful to total incident light but twitchy on spots / glints
+  / screen-flash) and the v1 `mean_g` (gamma + contrast bias).
+
+**Camera sensitivity / operating point (2026-06-25).** A *typical lights-on evening* room needs
+~**max exposure (10000, in 100 µs units) at gain 64** to sit well-exposed (`logmean ≈ −1.5`,
+`p50 ≈ 68`). So the camera is *insensitive*: normal indoor lives near the top of the exposure range;
+ranging headroom is almost all at the **bright** end (drop exposure for day/clip); below a lit room we
+floor fast (gain 64→128 ≈ 1 stop left) → lights-off just pins to minimum (fine). Running near max
+exposure (~1 s integration, ~1 fps) **averages out mains-frequency flicker** → very low jitter
+(steady-scene `logmean` plateau held to ±0.02). The daemon's old default (exp 1500) is mis-set — it
+floors a normal room; bias the default high and range *down*. **Comfort anchor (user-stated):** at that
+lit-evening level, **~16% backlight (raw 63/400)** is comfortable — a real preference, the kind of
+condition↔brightness pair the user would poke gsd with.
+
+**Brightness ownership (2026-06-25) — reconfirms Tier-1.** In GNOME 50 mutter owns the panel via
+`org.gnome.Mutter.DisplayConfig` (`Backlight` property + `SetBacklight`); `/sys/class/backlight/intel_backlight`
+is *decoupled* (saw sysfs 243 while mutter 43) and external writes don't stick. There is no durable
+external way to set screen brightness outside the desktop's own controls. Plus the **auto-mode
+lifecycle footgun**: a sensor vanishing without a clean `ReleaseLight` leaves gnome-shell stuck in auto
+mode, bricking manual brightness. Full mechanism + the rehearsed clean-release fix in
+[BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md) §5.
+
+**fn keys bypass mutter (2026-06-25).** Adjusting brightness with the laptop's keys moved the hardware
+(`intel_backlight` sysfs 45→63) but left mutter's `Backlight` property at 45 — so the keys are
+firmware/EC-handled and **don't route through mutter/gnome-shell**. With auto mode off these direct
+sysfs writes now stick (the stuck auto target earlier would have clobbered them). **Open question:** if
+the keys don't reach the shell, they may not emit `BrightnessChanged` → may not re-anchor gsd (§3) — so
+re-anchoring might require the quick-settings *slider*, not the keys. (Also softens the earlier "range
+shifted because the keys re-anchored" reading.) Verify when iris is wired up.
+
 ## §10 research-question scorecard
 
 | Q | Status |
 |---|---|
-| Q1 frame-mean tracks ambient monotonically? | Auto AE normalises (bad); **manual AE responds** — full ambient-range validation pending a light-varying session |
+| Q1 frame-mean tracks ambient monotonically? | Auto AE normalises (bad); **manual AE responds**; brackets confirm the sensor spans dark↔bright via **exposure ranging** (2026-06-25); reduction chosen = **`logmean`** |
 | Q2 exposure+gain metadata cleaner? | **No — unavailable** (firmware doesn't expose live AE) |
 | Q3 RGB(±IR) separate warm/cool, sun/LED? | Moot if brightness-only; ambient IR≈0 under LED as predicted; daylight test pending |
 | Q4 IR without emitter pollution? | **Yes — keep emitter-OFF frames** |
-| Q5 noise/lag, sample rate + smoothing? | AE settle ~3–4 s (manual avoids); smoothing TBD (~10 s) |
+| Q5 noise/lag, sample rate + smoothing? | AE settle ~3–4 s (manual avoids); downstream smoothing is gsd's EMA **τ ≈ 1.6 s** (not ~10 s — see BRIGHTNESS-MATH) |
 | Q6 privacy-LED blink, minimise? | Emitter only while streaming; RGB privacy-LED behaviour needs user observation |
 | Q7 daemon footprint? | Not yet measured; architecture decided (static-musl `systemd --user`) |

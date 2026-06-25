@@ -20,7 +20,7 @@ webcam ─▶ [iris: frame → lux] ─▶ virtual HID ALS (/dev/uhid)
                                    └▶ kernel hid-sensor-hub + hid-sensor-als
                                        └▶ /sys/bus/iio illuminance device
                                            └▶ iio-sensor-proxy ─▶ net.hadess.SensorProxy
-                                               └▶ gsd-power (curve + ~10s EMA + UI) ─▶ backlight
+                                               └▶ gsd-power (normalize + ~1.6s EMA) ─▶ gnome-shell ─▶ backlight
 ```
 
 iris's entire job is the **first arrow**: turn a downscaled camera frame into a believable lux
@@ -90,16 +90,24 @@ tuned exposure/gain, grab one low-res YUYV frame, reduce to brightness. Crib cli
 estimator (40-bin histogram + interquartile-range outlier rejection on the Y plane) rather than a
 naive mean; subtract the studio-range black level (Y=16). Then map luma→**a plausible lux scale**.
 
-Crucially, **gsd-power owns the response curve and smoothing** (its own ~10 s EMA), so iris does
-*not* build a brightness curve, dead-band, or transition logic — it only needs a sane, monotonic
-luma→lux mapping. Calibration is therefore relative/adaptive (no absolute lux), anchored at the few
-conditions one can create (covered lens = dark; near a window = bright). The screen-feedback loop
-(camera sees the screen lighting the user) is softened by gsd's EMA but remains a consideration (§STATUS).
+Crucially, **gsd-power + gnome-shell own the response curve and smoothing**, so iris does *not* build
+a brightness curve, dead-band, or transition logic — it only needs a sane, monotonic mapping. The
+downstream math is now fully decoded — see **[BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md)**. The two
+load-bearing facts: gsd's law is **self-normalizing and linear** (`brightness ∝ L/Lanchor`, capped at
+`L = 1.5·Lanchor`), so **only ratios matter — absolute "lux" is meaningless**; and because it is
+linear with a tight cap, a *linear-in-luminance* signal gives a uselessly narrow window — iris should
+report a **compressive (log-like)** function of scene luminance. Calibration is therefore
+relative/adaptive (no absolute lux), anchored at the few conditions one can create (covered lens =
+dark; near a window = bright). EMA τ ≈ **1.6 s** (not the ~10 s assumed earlier), so the
+screen-feedback loop (camera sees the screen lighting the user) is only mildly damped — a real
+consideration (§STATUS, BRIGHTNESS-MATH §3).
 
 ## 6. Operational profile (measured)
 
-- **Sample every 5–15 s** (adaptive: faster when light is moving, slower when stable). gsd's ~10 s
-  EMA means faster updates buy nothing.
+- **Sample every 5–15 s** (adaptive: faster when light is moving, slower when stable). gsd's EMA is
+  τ ≈ 1.6 s — its `α = 1/(1 + τ/Δt)` adapts to *our* update interval, so a slow cadence still tracks
+  (each reading just carries more weight); faster sampling mainly sharpens transient response, traded
+  against camera-on time/power. Revisit cadence alongside the feedback-loop work.
 - **Open/close the camera per sample**, not held open. One sample = open → set manual exposure →
   grab 1 frame → close ≈ **0.6 s** (luma is stable on frame 0 under manual exposure; ~0.55 s of that
   is UVC stream-startup) at **~10 ms CPU**. At a 5–15 s cadence the camera is live ~4–12% of the time.
@@ -118,6 +126,13 @@ conditions one can create (covered lens = dark; near a window = bright). The scr
   session-scoped via the uaccess ACL).
 - `iio-sensor-proxy` is already installed and needs **no changes** — it auto-detects the new IIO
   device. The user enables GNOME's "Automatic Brightness" toggle once (it appears when a sensor exists).
+- **Clean-release lifecycle (critical).** gsd only leaves auto mode on a `ReleaseLight` issued *while
+  the sensor is still present* (see [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md) §5). iris's shutdown must
+  trigger that release **before** the uhid device vanishes — otherwise stopping iris mid-session bricks
+  manual brightness (stuck high auto target; bottom of range unreachable) until a shell restart. Logout
+  is safe (session-inactive auto-releases); a mid-session stop/crash is the danger. Design the
+  `systemd --user` unit's stop path accordingly (and consider an upstream gsd report: it ought to send
+  `-1` on sensor-gone, not only on `ReleaseLight`).
 - **Language: Python** for now (validated; `linuxpy` + `hid-tools`, pure wheels, runs entirely on
   the host — no toolbox/gcc needed). Resident footprint ~30–50 MB is fine here; revisit Rust (~5 MB)
   only if it ever matters.
@@ -137,4 +152,5 @@ algorithm (§5); we do not adopt its architecture. (Full comparison in git histo
   `drivers/iio/common/hid-sensors/hid-sensor-attributes.c`.
 - `iio-sensor-proxy` (`net.hadess.SensorProxy`): https://gitlab.freedesktop.org/hadess/iio-sensor-proxy
 - `hid-tools` (uhid plumbing used by the spike): https://gitlab.freedesktop.org/libevdev/hid-tools
-- gsd-power ambient EMA (`GSD_AMBIENT_TIME_CONSTANT` ≈ 10 s): gnome-settings-daemon `plugins/power`.
+- Downstream brightness arithmetic (gsd-power + gnome-shell), decoded from source: [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md).
+  gsd-power `plugins/power/gsd-power-manager.c` (`iio_proxy_changed`); gnome-shell `js/misc/brightnessManager.js` (`_sync`).

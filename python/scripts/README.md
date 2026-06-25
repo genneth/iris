@@ -14,6 +14,10 @@ daemon will live in `src/iris/`.
 - `manual_test.py` — manual exposure/gain sweep; luma responds → **manual frame-mean luma** is the signal.
 - `liveness.py` — confirm frames are fresh (sequence # + byte hash), not duplicates.
 - `measure_sample.py` — per-sample cost: ~10 ms CPU, ~0.6 s window, luma stable on frame 0 under manual exposure.
+- `probe_pixels.py` — pixel→scalar reduction + dynamic-range probe. `bracket` sweeps exposure
+  (50..10000, in 100 µs units) at a held scene to show ranging headroom; `watch` logs candidate
+  scalars (gamma mean / linearised mean / log-average) and clip/floor% over time across conditions.
+  Informs the calibration in [BRIGHTNESS-MATH.md](../../BRIGHTNESS-MATH.md).
 
 ## IR investigation (drove the brightness-only / RGB-only decision)
 - `ir_strobe.py` — characterises the Windows-Hello IR-emitter strobe (illuminated/ambient frame pairs @ 15 fps).

@@ -40,12 +40,46 @@ _Updated 2026-06-25. Architecture validated; daemon not yet built._
   toggling `ambient-enabled` — to make gsd-power claim the freshly-appeared sensor.) Caveat: the
   swing was only ~36–60% (placeholder lux mapping squeezed through gsd's curve) → calibration next.
 
+- **Whole downstream stack decoded from source (2026-06-25)** → [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md).
+  gsd-power: self-normalizing **linear** law, `brightness ∝ L/Lanchor` capped at `L=1.5·Lanchor`,
+  EMA **τ ≈ 1.6 s** (not ~10 s), re-anchors on startup / idle-dim / any user brightness change.
+  gnome-shell: auto target `T` and the manual slider `S` **combine** as `clamp(T + S − 0.5, 0, 1)`,
+  written **linearly** to raw backlight units. This nails both live-test surprises: the slider doesn't
+  move because it shows the *bias* `S` (auto slides the panel around it); the range "shifted" on
+  key-press because changing `S` makes gsd re-anchor. Two design facts fall out: **only L-ratios
+  matter (absolute lux is meaningless)**, and **the law's tight linear cap means we must feed it a
+  compressive/log-like signal**, not linear-in-luminance.
+
+- **Pixel reduction + dynamic range probed & decided (2026-06-25)** — `scripts/probe_pixels.py`,
+  results in [FINDINGS.md](./FINDINGS.md). Reduction = **`logmean`** (log-average / geometric-mean
+  luma): robust to bright spots and already the log-compressed signal gsd wants. Exposure brackets
+  (dim room well-exposed at exp 5000–10000; flashlight at 500–1000, clips ≥2000) prove **a single
+  fixed exposure can't span dark→bright → auto-ranging is required.**
+
+- **Camera sensitivity / operating point + comfort anchor (2026-06-25).** A *typical lights-on evening*
+  needs ~**max exposure (10000) at gain 64** (`logmean ≈ −1.5`); the camera is insensitive → indoor
+  lives near the top of the exposure range, ranging headroom is almost all at the **bright** end, and
+  below a lit room we floor fast (lights-off → minimum, fine). Running near max exposure (~1 fps, 1 s
+  integration) **averages out mains flicker** → steady-scene jitter is tiny (±0.02 `logmean`). The old
+  default exp 1500 floors a normal room → bias the default high, range *down*. User comfort anchor:
+  lit-evening ↔ **~16% (raw 63/400)** (set via the brightness keys — which notably **bypass mutter**:
+  they moved sysfs but not mutter's `Backlight` property; see FINDINGS).
+
+- **Brightness-ownership dig + clean-release rehearsal (2026-06-25).** Reconfirmed Tier-1 hard: in
+  GNOME 50 **mutter owns the panel** via `org.gnome.Mutter.DisplayConfig` (`SetBacklight`);
+  `/sys/class/backlight` is decoupled and external writes don't stick. Found the **auto-mode lifecycle
+  footgun** — a sensor vanishing (vs a clean `ReleaseLight`) leaves gnome-shell stuck in auto mode,
+  bricking manual brightness. Rehearsed the fix (claim a live sensor → disable ambient → clean release
+  → `-1`). Detail in [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md) §5.
+
 ## ⏳ Next
 
-1. **luma → lux calibration (now the priority).** The live test worked but the backlight only swung
-   ~36–60% — our placeholder linear `0..1000` lux through gsd-power's curve compresses the range.
-   Tune the luma→lux mapping (and watch the screen-feedback loop) so dark rooms go genuinely dim and
-   bright rooms bright.
+1. **Camera output pipeline (priority; reduction + ranging decided, build parked by user).** Decided:
+   report `logmean`; drop the `MAX_LUX` "lux" framing (ratios only); auto-range exposure(+gain) and
+   fold the settings back in for a wide-range EV proxy `∝ γ·logmean − log(exposure·gain)`. **Parked
+   until ready:** building the auto-ranging loop. **Still pending data:** a daytime/window bright
+   anchor (night-time flashlight proved the mechanism, not a calibrated top), and a
+   dim→normal→bright `watch` walk to confirm the EV proxy is monotonic across conditions.
 2. **Deployment:** a udev rule for `/dev/uhid` so the daemon runs as a `systemd --user` service
    (currently needs sudo), plus the unit bound to the graphical session — and decide how to get
    gsd-power to claim the sensor at startup (the `ambient-enabled` toggle, or appearing before login).
@@ -71,15 +105,20 @@ _Updated 2026-06-25. Architecture validated; daemon not yet built._
   camera — noisily. **To trust a figure:** many interleaved on/off cycles on a genuinely idle
   system for statistical significance, or an external USB power meter. Matters mainly for the
   duty-cycling vs continuous trade-off (the ~1 W is the most duty-cycling could reclaim).
-- **luma → lux calibration.** What mapping makes gsd-power's curve feel natural? Relative/adaptive,
+- **luma → reported-value mapping.** Compressive/log-like (see BRIGHTNESS-MATH §3); relative/adaptive,
   anchored at dark/bright; absolute lux not required. Needs a tuning session.
 - **Screen-feedback loop.** The camera partly sees the screen lighting the user → risk of runaway.
-  gsd's ~10 s EMA dampens it; may still need to subtract a model of our own current brightness.
+  gsd's EMA (τ ≈ **1.6 s**, milder than the ~10 s we assumed) only partly damps it; likely need to
+  subtract a model of our own backlight's contribution to luma (we can read current backlight from sysfs).
 - **GET_REPORT poll vs. buffered/triggered path.** iio-sensor-proxy currently reads via a
   synchronous input-report poll (we serve current lux there). Confirm this is robust, or whether to
   also feed the trigger/buffer.
 - **Session lifecycle.** Behaviour at the login screen, on lock, and with no active session (camera
   uaccess is session-scoped; the daemon should pause cleanly).
+- **Clean-release lifecycle (deployment-critical).** iris must cause gsd to `ReleaseLight` *before* its
+  uhid sensor disappears, or stopping mid-session bricks manual brightness until a shell restart
+  (BRIGHTNESS-MATH §5; rehearsed 2026-06-25). Logout is safe. Design the unit's stop path; maybe report
+  upstream that gsd should send `-1` on sensor-gone, not only on `ReleaseLight`.
 - **Final language.** Python is validated and fine on footprint (~30–50 MB). Revisit Rust (~5 MB)
   only if a resident daemon's footprint becomes a concern.
 - **Daylight dynamic range.** Confirm the lux scale spans real bright conditions (pending a daylight test).
