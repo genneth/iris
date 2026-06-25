@@ -38,9 +38,16 @@ def dump(path: str) -> None:
                 ControlFlag.HAS_PAYLOAD not in flags
                 and ControlFlag.DISABLED not in flags
                 and ControlFlag.WRITE_ONLY not in flags
-                and c.type in (ControlType.INTEGER, ControlType.BOOLEAN,
-                               ControlType.MENU, ControlType.INTEGER_MENU,
-                               ControlType.U8, ControlType.U16, ControlType.U32)
+                and c.type
+                in (
+                    ControlType.INTEGER,
+                    ControlType.BOOLEAN,
+                    ControlType.MENU,
+                    ControlType.INTEGER_MENU,
+                    ControlType.U8,
+                    ControlType.U16,
+                    ControlType.U32,
+                )
             )
             if readable:
                 try:

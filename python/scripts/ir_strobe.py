@@ -26,8 +26,10 @@ def main() -> None:
     except Exception as e:  # noqa: BLE001
         fps = f"<{e!r}>"
     print(f"format {fmt.width}x{fmt.height} {fmt.pixel_format.human_str()}  fps={fps}")
-    print(f"{'i':>3} {'seq':>5} {'buf':>3} {'t(s)':>9} {'dt(ms)':>7} {'mean':>6} {'max':>4} "
-          f"{'nnz>4':>7} {'argmax(r,c)':>12} {'where':>8}")
+    print(
+        f"{'i':>3} {'seq':>5} {'buf':>3} {'t(s)':>9} {'dt(ms)':>7} {'mean':>6} {'max':>4} "
+        f"{'nnz>4':>7} {'argmax(r,c)':>12} {'where':>8}"
+    )
 
     prev_t = None
     with cam:
@@ -39,10 +41,12 @@ def main() -> None:
             nnz = int((a > 4).sum())
             r, c = np.unravel_index(int(a.argmax()), a.shape)
             # which image region holds the brightest pixel (center bias = emitter glint)
-            quad = f"{'T' if r < H/2 else 'B'}{'L' if c < W/2 else 'R'}"
-            cen = "CENTER" if (H*0.25 < r < H*0.75 and W*0.25 < c < W*0.75) else quad
-            print(f"{i:3d} {frame.frame_nb:5d} {frame.index:3d} {t:9.3f} {dt:7.1f} "
-                  f"{a.mean():6.2f} {a.max():4d} {nnz:7d} {f'({r},{c})':>12} {cen:>8}")
+            quad = f"{'T' if r < H / 2 else 'B'}{'L' if c < W / 2 else 'R'}"
+            cen = "CENTER" if (H * 0.25 < r < H * 0.75 and W * 0.25 < c < W * 0.75) else quad
+            print(
+                f"{i:3d} {frame.frame_nb:5d} {frame.index:3d} {t:9.3f} {dt:7.1f} "
+                f"{a.mean():6.2f} {a.max():4d} {nnz:7d} {f'({r},{c})':>12} {cen:>8}"
+            )
 
 
 if __name__ == "__main__":

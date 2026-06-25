@@ -1,0 +1,52 @@
+[project]
+name = "iris"
+version = "0.1.0"
+description = "Use the laptop webcam as a virtual ambient-light sensor so GNOME can auto-adjust screen brightness."
+requires-python = ">=3.13"
+dependencies = [
+    "hid-tools>=0.12",
+    "linuxpy>=0.16",
+    "numpy>=2.1",
+    "pillow>=12.2.0",
+]
+
+# No console-script entry point yet — src/iris is a stub; the validated experiments
+# live in scripts/ and run via `uv run python scripts/<x>.py`.
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pytest>=8.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/iris"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+# Real gates: correctness (pyflakes/bugbear), imports, modernisation, obvious smells.
+# Deliberately NOT enabling docstring / annotation-mandate / complexity pedantry.
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "RUF"]
+
+[tool.mypy]
+# Type-check only our own code (src/); scripts/ are an experimental lab notebook.
+files = ["src"]
+python_version = "3.13"
+strict = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["linuxpy.*", "hidtools.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

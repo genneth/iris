@@ -40,19 +40,23 @@ def ir_emitter_worker(stop: threading.Event, counter: list) -> None:
 
 def stats(label: str, lumas: list) -> None:
     a = np.array(lumas)
-    print(f"  {label:16s} n={len(a):3d}  mean={a.mean():7.3f}  std={a.std():6.3f}  "
-          f"min={a.min():6.2f}  max={a.max():6.2f}")
+    print(
+        f"  {label:16s} n={len(a):3d}  mean={a.mean():7.3f}  std={a.std():6.3f}  "
+        f"min={a.min():6.2f}  max={a.max():6.2f}"
+    )
 
 
 def main() -> None:
     cam = Device("/dev/video0")
     cam.open()
     cam.set_format(BufferType.VIDEO_CAPTURE, 320, 180, pixel_format="YUYV")
-    set_control(cam, CID_AUTO_EXPOSURE, 1)        # manual
+    set_control(cam, CID_AUTO_EXPOSURE, 1)  # manual
     set_control(cam, CID_EXPOSURE_ABS, EXPOSURE)
     set_control(cam, CID_GAIN, GAIN)
-    print(f"RGB locked manual: exposure_abs={get_control(cam, CID_EXPOSURE_ABS)} "
-          f"gain={get_control(cam, CID_GAIN)}")
+    print(
+        f"RGB locked manual: exposure_abs={get_control(cam, CID_EXPOSURE_ABS)} "
+        f"gain={get_control(cam, CID_GAIN)}"
+    )
 
     stop = threading.Event()
     ir_count = [0]
@@ -65,8 +69,7 @@ def main() -> None:
             if i < PER_PHASE:
                 phases["1 IR-off"].append(luma)
                 if i == PER_PHASE - 1:  # turn emitter ON
-                    ir_thread = threading.Thread(
-                        target=ir_emitter_worker, args=(stop, ir_count))
+                    ir_thread = threading.Thread(target=ir_emitter_worker, args=(stop, ir_count))
                     ir_thread.start()
             elif i < 2 * PER_PHASE:
                 if i >= PER_PHASE + 3:  # skip a few frames for IR stream to spin up
@@ -93,8 +96,10 @@ def main() -> None:
             stats(label, lumas)
     base = np.mean(phases["1 IR-off"] + phases["3 IR-off"])
     onm = np.mean(phases["2 IR-ON"])
-    print(f"\n  IR-on minus baseline = {onm - base:+.3f} luma "
-          f"({(onm - base) / max(base, 1e-6) * 100:+.1f}%)")
+    print(
+        f"\n  IR-on minus baseline = {onm - base:+.3f} luma "
+        f"({(onm - base) / max(base, 1e-6) * 100:+.1f}%)"
+    )
     print("  -> ~0 means robust IR rejection; a clear positive lift means IR leakage.")
 
 

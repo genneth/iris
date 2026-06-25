@@ -14,9 +14,9 @@ set = set_control
 cam = Device("/dev/video0")
 cam.open()
 cam.set_format(BufferType.VIDEO_CAPTURE, 320, 180, pixel_format="YUYV")
-set(cam, 0x009A0901, 1)     # AE manual
+set(cam, 0x009A0901, 1)  # AE manual
 set(cam, 0x009A0902, 1500)  # exposure
-set(cam, 0x00980913, 128)   # gain
+set(cam, 0x00980913, 128)  # gain
 
 print(f"{'i':>3} {'seq':>5} {'luma':>10} {'hash8':>10}")
 try:

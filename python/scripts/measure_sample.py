@@ -20,7 +20,7 @@ def sample(nframes=8):
     cam = Device("/dev/video0")
     cam.open()
     cam.set_format(BufferType.VIDEO_CAPTURE, 320, 180, pixel_format="YUYV")
-    set_control(cam, CID_AE, 1)        # manual
+    set_control(cam, CID_AE, 1)  # manual
     set_control(cam, CID_EXP, 1500)
     set_control(cam, CID_GAIN, 64)
     t_open = time.monotonic() - w0
@@ -47,11 +47,16 @@ def main():
     walls, cpus = [], []
     for c in range(n):
         r = sample()
-        walls.append(r["wall_s"]); cpus.append(r["cpu_s"])
-        print(f"{c:>3} {r['wall_s']:>7} {r['cpu_s']:>6} {r['t_open_s']:>7} "
-              f"{r['open_to_first_frame_s']:>9}  {r['lumas']}")
+        walls.append(r["wall_s"])
+        cpus.append(r["cpu_s"])
+        print(
+            f"{c:>3} {r['wall_s']:>7} {r['cpu_s']:>6} {r['t_open_s']:>7} "
+            f"{r['open_to_first_frame_s']:>9}  {r['lumas']}"
+        )
         time.sleep(1.0)
-    print(f"\nmedian wall={sorted(walls)[len(walls)//2]}s  median cpu={sorted(cpus)[len(cpus)//2]}s per sample")
+    print(
+        f"\nmedian wall={sorted(walls)[len(walls) // 2]}s  median cpu={sorted(cpus)[len(cpus) // 2]}s per sample"
+    )
     print("(luma should stabilise within a frame or two under fixed manual exposure)")
 
 

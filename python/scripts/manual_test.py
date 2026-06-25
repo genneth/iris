@@ -33,8 +33,10 @@ def main() -> None:
     cam.set_format(BufferType.VIDEO_CAPTURE, 320, 180, pixel_format="YUYV")
     try:
         set_control(cam, CID_AUTO_EXPOSURE, AE_MANUAL)
-        print(f"set AE=manual -> reads back {get_control(cam, CID_AUTO_EXPOSURE)} "
-              f"(exposure_abs now {get_control(cam, CID_EXPOSURE_ABS)})")
+        print(
+            f"set AE=manual -> reads back {get_control(cam, CID_AUTO_EXPOSURE)} "
+            f"(exposure_abs now {get_control(cam, CID_EXPOSURE_ABS)})"
+        )
 
         print("\n-- sweep exposure_absolute at gain=0 --")
         set_control(cam, CID_GAIN, 0)

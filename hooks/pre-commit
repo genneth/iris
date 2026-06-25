@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# iris pre-commit gate — runs ./dev.sh check (ruff format+lint, mypy, pytest,
+# cargo fmt+clippy). Enable with `./dev.sh setup`.
+# In a genuine emergency, bypass with `git commit --no-verify`.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+exec ./dev.sh check

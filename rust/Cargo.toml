@@ -1,0 +1,10 @@
+[package]
+name = "iris"
+version = "0.1.0"
+edition = "2024"
+description = "Webcam → virtual ambient-light sensor daemon (low-footprint deployment build)."
+
+[lints.clippy]
+all = "warn"
+
+[dependencies]

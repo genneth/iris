@@ -21,6 +21,9 @@ _Updated 2026-06-25. Architecture validated; daemon not yet built._
   in [DESIGN.md](./DESIGN.md) §3.
 - **Operational profile measured:** ~10 ms CPU/sample, ~0.6 s capture window, luma stable on the
   first frame under manual exposure; target cadence 5–15 s; open/close per sample.
+- **Repo structure + dev gates in place:** `python/` (uv, MVP) + `rust/` (cargo, deployment stub)
+  split; `./dev.sh` runs ruff + mypy + pytest + rustfmt + clippy, enforced by a `hooks/pre-commit`
+  gate (pure bash — the host has no `make`).
 
 ## ⏳ Next (build)
 
@@ -58,7 +61,7 @@ _Updated 2026-06-25. Architecture validated; daemon not yet built._
 ## How to reproduce the validation
 
 ```sh
-uv sync
+cd python && uv sync
 uv run python scripts/uhid_als_spike.py validate         # descriptor parse, no root
 sudo .venv/bin/python scripts/uhid_als_spike.py 45 &      # create virtual ALS, push a lux ramp
 timeout -s KILL 16 monitor-sensor                         # should print the ramp as "Light changed"

@@ -44,8 +44,10 @@ def main() -> None:
         print(heatmap(off[0].astype(np.float64)))
     if off:
         amb = np.mean([f.mean() for f in off])
-        print(f"\nambient-IR signal (mean of OFF frames) = {amb:.3f}  "
-              f"(near-zero => IR-poor light, e.g. LED)")
+        print(
+            f"\nambient-IR signal (mean of OFF frames) = {amb:.3f}  "
+            f"(near-zero => IR-poor light, e.g. LED)"
+        )
 
 
 if __name__ == "__main__":

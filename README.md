@@ -5,8 +5,8 @@ auto-adjust screen brightness. iris does **not** control brightness itself: it p
 as a standard ambient-light sensor (a virtual HID ALS), and GNOME's existing auto-brightness does
 the rest. Brightness only (no colour temperature).
 
-**IR**is — the name is heritage: the infrared-sensor exploration ([FINDINGS.md](./FINDINGS.md)) is
-what taught us the camera's behaviour. The shipping design uses the RGB sensor.
+**IR**is — heritage name: the infrared-sensor exploration ([FINDINGS.md](./FINDINGS.md)) is what
+taught us the camera's behaviour. The shipping design uses the RGB sensor.
 
 **Status (2026-06-25):** the architecture is **validated end-to-end** — a virtual ambient-light
 sensor fed from userspace is detected by `iio-sensor-proxy` and reports our values up to GNOME. The
@@ -21,13 +21,25 @@ real camera→lux daemon is **not yet built**. See **[STATUS.md](./STATUS.md)**.
 
 ## Layout
 
-- `scripts/` — the experiments that validated the design ([scripts/README.md](./scripts/README.md)).
-- `src/iris/` — the daemon package (stub; to be built).
+- **`python/`** — the MVP / iteration implementation (uv project: `src/iris/`, `scripts/`, `tests/`).
+- **`rust/`** — the eventual low-footprint, shrink-wrapped deployment build (cargo; currently a stub).
+- **`dev.sh`**, **`hooks/`** — the dev task runner and the git pre-commit gate. Shared docs at the root.
+
+## Development
+
+```sh
+cd python && uv sync     # set up the Python env (host-side; no toolbox needed)
+./dev.sh setup           # enable the git pre-commit hook (once per clone)
+./dev.sh check           # the full gate: ruff + mypy + pytest + cargo fmt/clippy (runs on every commit)
+./dev.sh fmt             # auto-format python + rust
+```
 
 ## Running the experiments
 
 ```sh
-uv sync
-uv run python scripts/uhid_als_spike.py validate     # parse the virtual-sensor descriptor (no root)
-sudo .venv/bin/python scripts/uhid_als_spike.py       # create the virtual ALS (needs /dev/uhid)
+cd python
+uv run python scripts/uhid_als_spike.py validate    # parse the virtual-sensor descriptor (no root)
+sudo .venv/bin/python scripts/uhid_als_spike.py      # create the virtual ALS (needs /dev/uhid)
 ```
+
+See [`python/scripts/README.md`](./python/scripts/README.md) for the full experiment index.

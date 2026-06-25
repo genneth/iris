@@ -14,7 +14,7 @@ CID = {
     "gain": 0x00980913,
     "auto_white_balance": 0x0098090C,
     "white_balance_temp": 0x0098091A,
-    "auto_exposure": 0x009A0901,   # menu: 1=manual, 3=aperture-priority(auto)
+    "auto_exposure": 0x009A0901,  # menu: 1=manual, 3=aperture-priority(auto)
     "exposure_absolute": 0x009A0902,
 }
 AE_MODE = {0: "auto", 1: "manual", 2: "shutter-pri", 3: "aperture-pri"}
@@ -48,24 +48,30 @@ def main() -> None:
     print("### RGB /dev/video0 (YUYV) ###")
     cam, fmt, frames = grab("/dev/video0", 160, 120, "YUYV")
     with cam:
-        print(f"  negotiated: {fmt.width}x{fmt.height} {fmt.pixel_format.human_str()} "
-              f"size={fmt.size} bpl={fmt.bytes_per_line}")
+        print(
+            f"  negotiated: {fmt.width}x{fmt.height} {fmt.pixel_format.human_str()} "
+            f"size={fmt.size} bpl={fmt.bytes_per_line}"
+        )
         for i, (data, n) in enumerate(frames):
             arr = np.frombuffer(data, dtype=np.uint8)
             luma = arr[0::2].mean()  # YUYV: Y at even byte offsets
             print(f"  frame {i}: {n} bytes  mean_luma={luma:6.2f}")
         meta = read_meta(cam)
     ae = meta.get("auto_exposure")
-    print(f"  metadata: AE={ae}({AE_MODE.get(ae, '?')}) "
-          f"exposure_abs={meta['exposure_absolute']} gain={meta['gain']} "
-          f"brightness={meta['brightness']} autoWB={meta['auto_white_balance']} "
-          f"wb_temp={meta['white_balance_temp']}")
+    print(
+        f"  metadata: AE={ae}({AE_MODE.get(ae, '?')}) "
+        f"exposure_abs={meta['exposure_absolute']} gain={meta['gain']} "
+        f"brightness={meta['brightness']} autoWB={meta['auto_white_balance']} "
+        f"wb_temp={meta['white_balance_temp']}"
+    )
 
     print("\n### IR /dev/video2 (GREY) ###")
     cam, fmt, frames = grab("/dev/video2", 160, 120, "GREY")
     with cam:
-        print(f"  negotiated: {fmt.width}x{fmt.height} {fmt.pixel_format.human_str()} "
-              f"size={fmt.size} bpl={fmt.bytes_per_line}")
+        print(
+            f"  negotiated: {fmt.width}x{fmt.height} {fmt.pixel_format.human_str()} "
+            f"size={fmt.size} bpl={fmt.bytes_per_line}"
+        )
         for i, (data, n) in enumerate(frames):
             arr = np.frombuffer(data, dtype=np.uint8)
             print(f"  frame {i}: {n} bytes  mean={arr.mean():6.2f}  max={arr.max()}")

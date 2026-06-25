@@ -6,6 +6,9 @@ __pycache__/
 /dist/
 /build/
 
+# Rust
+rust/target/
+
 # editor / OS
 *.swp
 .DS_Store
