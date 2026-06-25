@@ -41,8 +41,9 @@ _Updated 2026-06-25. Architecture validated; daemon not yet built._
    gsd-power's curve feels natural; address the screen-feedback loop.
 3. **Deployment:** a udev rule for `/dev/uhid` so the daemon runs as a `systemd --user` service
    (it currently needs sudo), plus the unit bound to the graphical session.
-4. **Measure power on battery** (`current_now`×`voltage_now`) to quantify the continuous-stream draw
-   and decide whether it's acceptable or we revisit duty-cycling.
+4. **Power: re-measure rigorously.** A first battery-gauge pass put the webcam at **~1 W** (very
+   rough — see Open questions). Redo properly: many interleaved on/off cycles on a *genuinely idle*
+   system, averaged to statistical significance — or an external USB power meter — before trusting it.
 5. **Revisit the parked trade-offs** once the above works: open/close vs continuous (LED blink vs
    steady), camera contention / `EBUSY` back-off, adaptive cadence.
 
@@ -51,6 +52,18 @@ _Updated 2026-06-25. Architecture validated; daemon not yet built._
 - **Privacy-LED blinking (parked).** Open/close blinks the camera LED every few seconds; some find
   that worse than a steady light. Adaptive cadence reduces frequency; no clean fix exists. Revisit
   once the mechanics work.
+- **Power draw of continuous streaming — _preliminary, low confidence_ (2026-06-25).** One
+  battery-gauge session (`BAT0 current×voltage` while discharging, `scripts/measure_power.py`,
+  ~25 s averages) put the webcam at **~1 W** (~0.7–1.3 W depending on drift-correction), ≈3–5% of
+  the ~24 W idle draw. **Treat as order-of-magnitude only** — the totality of observations was
+  messy: the off-baseline drifted ~1.1 W between two reads; a repeat was contaminated (mean 38 W,
+  a 97 W spike) and the baseline later climbed to ~30 W ±3 W — i.e. the desktop was *not* quiet
+  (background / dGPU activity swamps a sub-watt signal). No sensor instruments the camera's USB
+  rail directly: RAPL/turbostat see only the CPU package (the streaming host-side cost was *below*
+  the ±0.6 W package noise floor), and only total-system power (battery, discharging) captures the
+  camera — noisily. **To trust a figure:** many interleaved on/off cycles on a genuinely idle
+  system for statistical significance, or an external USB power meter. Matters mainly for the
+  duty-cycling vs continuous trade-off (the ~1 W is the most duty-cycling could reclaim).
 - **luma → lux calibration.** What mapping makes gsd-power's curve feel natural? Relative/adaptive,
   anchored at dark/bright; absolute lux not required. Needs a tuning session.
 - **Screen-feedback loop.** The camera partly sees the screen lighting the user → risk of runaway.
