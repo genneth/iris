@@ -1,6 +1,8 @@
 <resources>
-    <style name="Theme.Pupil" parent="Theme.AppCompat.DayNight">
-        <item name="colorPrimary">@color/pupil_iris</item>
+    <!-- NoActionBar: the AppCompat action bar mis-stacks under enforced edge-to-edge
+         (targetSdk 35) and duplicated nothing; the layout carries its own title. -->
+    <style name="Theme.Pupil" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/bluetooth_blue</item>
         <item name="preferenceTheme">@style/PreferenceThemeOverlay</item>
     </style>
 </resources>

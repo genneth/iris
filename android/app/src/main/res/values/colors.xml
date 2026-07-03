@@ -1,4 +1,5 @@
 <resources>
     <color name="pupil_navy">#16283C</color>
-    <color name="pupil_iris">#3D6FA5</color>
+    <!-- Canonical Bluetooth brand blue -->
+    <color name="bluetooth_blue">#0082FC</color>
 </resources>

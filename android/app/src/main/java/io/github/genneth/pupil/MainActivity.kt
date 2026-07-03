@@ -12,8 +12,11 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : AppCompatActivity() {
 
@@ -28,6 +31,20 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // targetSdk 35 enforces edge-to-edge: the window draws behind the system
+        // bars, so pad the root view by the system-bar insets (on top of its own
+        // 24dp padding) or content lands under the status bar.
+        val root = findViewById<LinearLayout>(R.id.root)
+        val basePad = root.paddingTop
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(
+                basePad + bars.left, basePad + bars.top,
+                basePad + bars.right, basePad + bars.bottom,
+            )
+            insets
+        }
 
         findViewById<Button>(R.id.toggleButton).setOnClickListener {
             if (PupilState.running) {
