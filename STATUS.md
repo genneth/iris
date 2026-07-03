@@ -167,7 +167,11 @@ _Updated 2026-07-03. MVP validated end-to-end; sink decision reopened (see Next 
   streamed over ssh/HTTP). Possible follow-on: a small Android app broadcasting BTHome-v2 BLE adverts
   (service data `0xFCD2`, illuminance object `0x05`), read host-side via BlueZ/bleak — but only as an
   *opportunistic* boost (pocket/face-down ⇒ lux 0): gate on freshness/plausibility, webcam remains
-  the foundation. (Assumes Android; iOS exposes no public ALS API.) → **Building: Pupil** (spec docs/superpowers/specs/2026-07-03-pupil-ble-als-design.md, plan docs/superpowers/plans/2026-07-03-pupil-ble-als.md).
+  the foundation. (Assumes Android; iOS exposes no public ALS API.) → **Built & validated
+  on-device: Pupil** (2026-07-03; spec docs/superpowers/specs/2026-07-03-pupil-ble-als-design.md,
+  plan docs/superpowers/plans/2026-07-03-pupil-ble-als.md, acceptance results android/README.md —
+  screen-off streaming works on the Find N6 given ColorOS "Allow background activity"; TX low +
+  default RSSI gate ship as-is).
 - **Final language.** Python is validated and fine on footprint (~30–50 MB). Revisit Rust (~5 MB)
   only if a resident daemon's footprint becomes a concern.
 - **Daylight dynamic range.** Confirm the lux scale spans real bright conditions (pending a daylight test).

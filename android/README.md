@@ -23,13 +23,29 @@ Toolchain: gradle 9.6.1 bootstrap (~/.local/bin), wrapper Gradle 8.10.2, Temurin
    reverting the exemption).
 5. Decline any "high background power consumption" prompt about Pupil.
 
-## Find N6 acceptance results (2026-07-__)
+## Find N6 acceptance results (2026-07-03, ColorOS 16)
 
-- Sensor report: <record: wakeup ALS present? name? fifoMax? rung used>
-- First-sighting smoke test: <record: PASS / FAIL> — confirm with `btmon` that the advert is
-  received; note the advert deliberately carries NO Flags AD element and NO local name
-  (Android provides no way to set Flags on a non-connectable legacy advertising set; HA/BlueZ
-  PASSIVE-mode interop is therefore unverified — see spec §3).
-- Screen-off torch test: <record: PASS / killed / frozen-value>
-- RSSI walk @ TX low (−15 dBm): desk ___ dBm · sofa ___ · next room ___ ·
-  pocket ___ → chosen --min-rssi: ___
+- **Sensor report:** NO wakeup `TYPE_LIGHT` variant (`getDefaultSensor(TYPE_LIGHT, true)` =
+  null); default ALS = "OPLUS Fusion Light Sensor Next Gen" (vendor OPLUS, maxRange 65535 lx,
+  fifoMax 0, isWakeUp false) → **rung 2: non-wakeup + partial wakelock**. A wakeup lux sensor
+  exists but only as vendor type `qti.sensor.lux_aod` (AOD), not reachable via `TYPE_LIGHT`.
+- **First-sighting smoke test: PASS** — adverts decoded by the probe within seconds of Start;
+  lux tracked cover/uncover live. (Advert deliberately carries NO Flags AD element and NO
+  local name — Android can't set Flags on a non-connectable legacy advertising set; HA/BlueZ
+  PASSIVE-mode interop therefore unverified — see spec §3.)
+- **Screen-off torch test: PASS, with one load-bearing caveat.** With only the battery
+  exemption (checklist item 1), ColorOS's app freezer suspended Pupil **~30 s after lock**:
+  the controller kept repeating the last advert (packet id frozen) and the receiver correctly
+  reported `stale`; the app resumed instantly on unlock. After granting **Allow background
+  activity** (item 2), a full 11-minute locked run stayed `fresh` throughout (heartbeats
+  continuous, packet ids advancing), and a screen-off raise-to-light registered (22 → 94 lx and
+  back) — so the non-wakeup ALS genuinely streams with the display off on this device. Items
+  3–5 were NOT needed for an 11-minute run; revisit if longer idle periods (sleep-standby
+  hours) freeze it again.
+- **RSSI walk @ TX low (−15 dBm):** desk −64…−75 dBm · across room −86…−93 · pocket at
+  distance / next room / stairs −92…−98 (a few packets still audible) · back at desk
+  re-admitted instantly at −65. → **chosen --min-rssi: −75 (the default; admit −70 / drop −80
+  hysteresis needed no tuning).**
+- **TX power note:** ULTRA_LOW (−21 dBm) was tried and rejected — desk RSSI sat at −72…−76
+  with fades to −92, i.e. *below the admit bar*, so after any deep fade the phone could never
+  re-admit at desk range. LOW is the shipping default.
