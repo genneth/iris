@@ -31,3 +31,6 @@ daemon will live in `src/iris/`.
   (`monitor-sensor` reports the pushed lux). See `DESIGN.md` §"The virtual-ALS recipe".
   - `uv run python scripts/uhid_als_spike.py validate` — parse/inspect the descriptor (no root).
   - `sudo .venv/bin/python scripts/uhid_als_spike.py [seconds]` — create the device and push a lux ramp.
+
+## Pupil receiver (BLE probe)
+- `ble_als_probe.py` — live Pupil/BTHome advert probe (lux, RSSI, freshness state; --csv for the room walk).

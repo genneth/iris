@@ -377,6 +377,7 @@ name = "iris"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "bleak" },
     { name = "hid-tools" },
     { name = "linuxpy" },
     { name = "numpy" },
@@ -393,6 +394,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bleak", specifier = ">=0.23" },
     { name = "hid-tools", specifier = ">=0.12" },
     { name = "linuxpy", specifier = ">=0.16" },
     { name = "numpy", specifier = ">=2.1" },
