@@ -118,3 +118,12 @@ def test_scanner_dead_and_reset() -> None:
 def test_non_bthome_service_data_returns_none() -> None:
     t = _tracker()
     assert t.on_pupil_advert(b"\x00\x01", rssi=-60.0, now=0.0) is None
+
+
+def test_rejected_reading_does_not_poison_dedup() -> None:
+    t = _tracker()
+    weak = t.on_pupil_advert(PAYLOAD_143, rssi=-78.0, now=0.0)  # pid 42, below admit bar
+    assert weak is not None and not weak.accepted
+    strong = t.on_pupil_advert(PAYLOAD_143, rssi=-55.0, now=2.0)  # same pid 42, now admitted
+    assert strong is not None and strong.accepted
+    assert t.state(3.0) is TrackerState.FRESH

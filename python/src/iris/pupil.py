@@ -1,9 +1,9 @@
 """Receive-side logic for Pupil, the phone-as-BLE-ambient-light-sensor.
 
 Pure logic only — no bleak, no I/O: BTHome v2 illuminance decoding, the RSSI
-hysteresis gate, and the freshness state machine (added in a later task). The
-bleak shell lives in scripts/ble_als_probe.py; the iris daemon imports this
-module later. Spec: docs/superpowers/specs/2026-07-03-pupil-ble-als-design.md.
+hysteresis gate, and the freshness state machine. The bleak shell lives in
+scripts/ble_als_probe.py; the iris daemon imports this module later. Spec:
+docs/superpowers/specs/2026-07-03-pupil-ble-als-design.md.
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ class PupilTracker:
         self._config = config
         self._last_any_advert = started_at
         self._last_fresh: float | None = None
-        self._last_packet_id: int | None = None
+        self._last_accepted_packet_id: int | None = None
         self._admitted = False
 
     def on_any_advert(self, now: float) -> None:
@@ -113,12 +113,15 @@ class PupilTracker:
             self._admitted = True
         # Only a *changed* packet id refreshes freshness — a re-heard identical
         # advert (or a frozen phone behind a live heartbeat repeat) must not
-        # look alive. No packet id at all => cannot dedup, treat as new.
-        is_new = decoded.packet_id is None or decoded.packet_id != self._last_packet_id
-        self._last_packet_id = decoded.packet_id
+        # look alive. No packet id at all => cannot dedup, treat as new. Compare
+        # against the last ACCEPTED packet id only — a rejected reading must not
+        # poison dedup, so a weak advert followed by the same packet id at strong
+        # RSSI registers immediately.
+        is_new = decoded.packet_id is None or decoded.packet_id != self._last_accepted_packet_id
         accepted = self._admitted and is_new
         if accepted:
             self._last_fresh = now
+            self._last_accepted_packet_id = decoded.packet_id
         return PupilReading(
             lux=decoded.lux,
             packet_id=decoded.packet_id,
