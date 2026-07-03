@@ -47,6 +47,15 @@ Oppo Find N6                                molly (laptop)
 Unencrypted BTHome v2 service data under 16-bit UUID `0xFCD2`, plus a Flags AD element —
 **mandatory**: BlueZ won't parse the advert under passive scanning without Flags.
 
+> **Implementation reality (2026-07-03):** Android provides no way to include a Flags AD
+> element on a non-connectable legacy advertising set, and the local name Android would
+> advertise is the phone's Bluetooth adapter name, not "Pupil" — so the shipped advert carries
+> service data only (the Flags AD element and Complete Local Name in the worked example below
+> are not actually sent, and the byte total drops accordingly). Our receiver uses ACTIVE
+> scanning and is unaffected. Consequence: Home Assistant / BlueZ PASSIVE-mode reception of this
+> advert is unverified (passive scanning is Flags-gated, per the "mandatory" note above) —
+> revisit if the passive-scanning upgrade (§7) is pursued.
+
 Objects (ascending object-id order is **required** by the spec):
 
 | Object | Id | Type | Meaning |

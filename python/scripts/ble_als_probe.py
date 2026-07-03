@@ -14,6 +14,7 @@ import contextlib
 import csv
 import datetime
 import time
+from pathlib import Path
 from typing import Any
 
 from bleak import BleakScanner
@@ -49,11 +50,20 @@ async def run(args: argparse.Namespace) -> None:
     with contextlib.ExitStack() as stack:
         csv_writer = None
         if args.csv:
-            csv_file = stack.enter_context(open(args.csv, "w", newline="", buffering=1))
+            # Append mode: repeated runs (or a probe that got restarted mid-walk) must not
+            # truncate earlier room-walk data. Write the header only when the file is new
+            # or empty.
+            csv_path = Path(args.csv)
+            is_new_file = not csv_path.exists() or csv_path.stat().st_size == 0
+            csv_file = stack.enter_context(open(csv_path, "a", newline="", buffering=1))
             csv_writer = csv.writer(csv_file)
-            csv_writer.writerow(["iso_ts", "lux", "packet_id", "rssi", "accepted", "state"])
+            if is_new_file:
+                csv_writer.writerow(["iso_ts", "lux", "packet_id", "rssi", "accepted", "state"])
+
+        last_pid: int | None = None
 
         def on_advert(_device: Any, adv: Any) -> None:
+            nonlocal last_pid
             now = time.monotonic()
             payload = adv.service_data.get(BTHOME_SERVICE_UUID)
             if payload is None:
@@ -75,24 +85,49 @@ async def run(args: argparse.Namespace) -> None:
                     ]
                 )
             if reading.accepted or args.all:
-                tag = "" if reading.accepted else "  [rejected: rssi gate or repeat]"
+                # The tracker doesn't expose *why* a reading was rejected, so derive it
+                # locally: a repeat of the last accepted packet id vs. a signal too weak to
+                # be admitted in the first place.
+                if reading.accepted:
+                    tag = ""
+                elif reading.packet_id is not None and reading.packet_id == last_pid:
+                    tag = "  [rejected: repeat pid]"
+                else:
+                    tag = "  [rejected: rssi gate]"
                 print(
                     f"{_ts()}  {reading.lux:9.2f} lx  rssi {reading.rssi:4.0f}  "
                     f"pid {reading.packet_id}  {state.value}{tag}"
                 )
+            if reading.accepted:
+                last_pid = reading.packet_id
 
         last_state = TrackerState.NEVER_SEEN
         while True:  # outer loop: recreate the scanner when it goes dead
-            print(f"{_ts()}  scanning (active) for BTHome service data {BTHOME_SERVICE_UUID[:8]}…")
-            async with BleakScanner(on_advert, service_uuids=[BTHOME_SERVICE_UUID]):
-                while True:
-                    await asyncio.sleep(1.0)
-                    state = tracker.state(time.monotonic())
-                    if state is not last_state:
-                        print(f"{_ts()}  state: {last_state.value} -> {state.value}")
-                        last_state = state
-                    if state is TrackerState.SCANNER_DEAD:
-                        break
+            print(
+                f"{_ts()}  scanning (active, unfiltered) for BTHome service data "
+                f"{BTHOME_SERVICE_UUID[:8]}…"
+            )
+            try:
+                # Unfiltered: the client-side payload lookup above (service_data.get) is
+                # the real filter. A BlueZ-side service_uuids filter made "the BTHome
+                # device left range" indistinguishable from "the scanner itself died",
+                # because on_any_advert() never fired for other devices' adverts either —
+                # a filtered scan made SCANNER_DEAD trigger on ordinary Pupil range loss.
+                async with BleakScanner(on_advert):
+                    while True:
+                        await asyncio.sleep(1.0)
+                        state = tracker.state(time.monotonic())
+                        if state is not last_state:
+                            print(f"{_ts()}  state: {last_state.value} -> {state.value}")
+                            last_state = state
+                        if state is TrackerState.SCANNER_DEAD:
+                            break
+            except Exception as e:
+                # BlueZ/bleak errors (InProgress races, rfkill toggles, suspend/resume)
+                # must not kill the probe — fall through to the same recreate path as a
+                # clean SCANNER_DEAD. KeyboardInterrupt is a BaseException, not an
+                # Exception, so Ctrl-C still propagates and stops the probe.
+                print(f"{_ts()}  scanner error: {e!r} — retrying")
             print(f"{_ts()}  scanner dead — recreating in 2 s (rfkill/suspend/adapter race?)")
             await asyncio.sleep(2.0)
             tracker.reset_scanner(time.monotonic())

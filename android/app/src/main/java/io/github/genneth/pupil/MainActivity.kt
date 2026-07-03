@@ -76,6 +76,12 @@ class MainActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(code, perms, granted)
         if (granted.isNotEmpty() && granted.all { it == PackageManager.PERMISSION_GRANTED }) {
             startForegroundService(Intent(this, PupilService::class.java))
+        } else {
+            android.widget.Toast.makeText(
+                this,
+                "Bluetooth-advertise or notification permission denied — enable in Settings → Apps → Pupil",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -99,7 +105,10 @@ class MainActivity : AppCompatActivity() {
         return buildString {
             appendLine("wakeup ALS: ${wakeup?.name ?: "none"}")
             appendLine("default ALS: ${default?.name ?: "none"}")
-            default?.let {
+            // Prefer the non-wakeup default sensor for the detail lines, but fall back to the
+            // wakeup variant so a wakeup-only device (no non-wakeup default) still records
+            // fifoMax etc. for the acceptance step.
+            (default ?: wakeup)?.let {
                 appendLine("  vendor=${it.vendor} maxRange=${it.maximumRange} lx")
                 appendLine("  fifoMax=${it.fifoMaxEventCount} isWakeUp=${it.isWakeUpSensor}")
             }

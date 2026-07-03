@@ -8,7 +8,7 @@ Assistant, or anything BTHome-aware). Spec:
 ## Build & install
 
     toolbox run -c dev bash -lc 'cd ~/iris/android && JAVA_HOME=~/.local/opt/jdk-21 ./gradlew :app:assembleDebug'
-    toolbox run -c dev bash -lc '~/Android/Sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk'
+    toolbox run -c dev bash -lc 'cd ~/iris/android && ~/Android/Sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk'
 
 Toolchain: gradle 9.6.1 bootstrap (~/.local/bin), wrapper Gradle 8.10.2, Temurin JDK 21 at ~/.local/opt/jdk-21, SDK at ~/Android/Sdk (platforms;android-35, build-tools;35.0.0). Unit tests: `./dev.sh android`.
 
@@ -26,6 +26,10 @@ Toolchain: gradle 9.6.1 bootstrap (~/.local/bin), wrapper Gradle 8.10.2, Temurin
 ## Find N6 acceptance results (2026-07-__)
 
 - Sensor report: <record: wakeup ALS present? name? fifoMax? rung used>
+- First-sighting smoke test: <record: PASS / FAIL> — confirm with `btmon` that the advert is
+  received; note the advert deliberately carries NO Flags AD element and NO local name
+  (Android provides no way to set Flags on a non-connectable legacy advertising set; HA/BlueZ
+  PASSIVE-mode interop is therefore unverified — see spec §3).
 - Screen-off torch test: <record: PASS / killed / frozen-value>
 - RSSI walk @ TX low (−15 dBm): desk ___ dBm · sofa ___ · next room ___ ·
   pocket ___ → chosen --min-rssi: ___

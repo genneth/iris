@@ -98,9 +98,19 @@ class PupilService : Service(), SensorEventListener {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // A re-delivered/double start (e.g. the system redelivering the start intent, or a
+        // fast double-tap before PupilState.running is observed) must not re-acquire the
+        // sensor/wakelock or re-create the advertising set: doing so previously leaked a
+        // wakelock and killed the existing set with ADVERTISE_FAILED_ALREADY_STARTED.
+        if (PupilState.running) return START_STICKY
         if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_ADVERTISE)
             != PackageManager.PERMISSION_GRANTED
         ) {
+            // Belt-and-braces: the activity already gates startup on this permission being
+            // granted, so this path should be unreachable in practice. Deliberate tension —
+            // we return before startForeground() rather than calling it, because starting a
+            // connectedDevice-type FGS without BLUETOOTH_ADVERTISE throws SecurityException
+            // on API 34+.
             Log.e(TAG, "BLUETOOTH_ADVERTISE not granted; refusing to start")
             stopSelf()
             return START_NOT_STICKY

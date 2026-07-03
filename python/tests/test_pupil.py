@@ -127,3 +127,40 @@ def test_rejected_reading_does_not_poison_dedup() -> None:
     strong = t.on_pupil_advert(PAYLOAD_143, rssi=-55.0, now=2.0)  # same pid 42, now admitted
     assert strong is not None and strong.accepted
     assert t.state(3.0) is TrackerState.FRESH
+
+
+def test_rssi_gate_boundary_values() -> None:
+    t = _tracker()  # default admit -70.0 dBm, drop -80.0 dBm
+    at_bar = t.on_pupil_advert(PAYLOAD_143, rssi=-70.0, now=0.0)  # strict >, not admitted
+    assert at_bar is not None and not at_bar.accepted
+    just_above = t.on_pupil_advert(PAYLOAD_144, rssi=-69.9, now=1.0)  # admitted
+    assert just_above is not None and just_above.accepted
+    at_drop_bar = t.on_pupil_advert(
+        bytes.fromhex("40002c050e3800"), rssi=-80.0, now=2.0
+    )  # strict <, stays admitted
+    assert at_drop_bar is not None and at_drop_bar.accepted
+    below_drop_bar = t.on_pupil_advert(
+        bytes.fromhex("40002d050e3800"), rssi=-80.1, now=3.0
+    )  # drops
+    assert below_drop_bar is not None and not below_drop_bar.accepted
+
+
+def test_state_timing_boundary_values() -> None:
+    t = _tracker()
+    t.on_pupil_advert(PAYLOAD_143, rssi=-60.0, now=0.0)
+    assert t.state(25.0) is TrackerState.FRESH  # strict >, still fresh at exactly 25.0 s
+    assert t.state(25.1) is TrackerState.STALE
+
+    t2 = _tracker()
+    t2.on_pupil_advert(PAYLOAD_143, rssi=-60.0, now=0.0)
+    assert t2.state(30.0) is not TrackerState.SCANNER_DEAD  # strict >, not dead at exactly 30.0 s
+    assert t2.state(30.1) is TrackerState.SCANNER_DEAD
+
+
+def test_tracker_packet_id_none_always_treated_new() -> None:
+    payload_no_pid = bytes.fromhex("40050e3800")  # no packet-id object, 143.5 lx
+    t = _tracker()
+    first = t.on_pupil_advert(payload_no_pid, rssi=-60.0, now=0.0)
+    assert first is not None and first.accepted
+    second = t.on_pupil_advert(payload_no_pid, rssi=-60.0, now=1.0)
+    assert second is not None and second.accepted

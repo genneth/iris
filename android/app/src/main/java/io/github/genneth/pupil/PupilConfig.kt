@@ -4,7 +4,10 @@ import android.bluetooth.le.AdvertisingSetParameters
 import android.content.Context
 import androidx.preference.PreferenceManager
 
-/** Spec §6 knobs, SharedPreferences-backed; changes apply on next service start. */
+/**
+ * Spec §6 knobs, SharedPreferences-backed; most knobs apply on next service start, but
+ * [heartbeatMs] is re-read every tick and so live-applies while the service is running.
+ */
 class PupilConfig(context: Context) {
     private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 

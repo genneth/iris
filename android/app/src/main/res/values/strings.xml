@@ -39,8 +39,8 @@
     <string-array name="heartbeat_labels">
         <item>5 s</item>
         <item>10 s (default)</item>
-        <item>30 s</item>
-        <item>60 s</item>
+        <item>30 s (needs receiver --stale-after ≥75)</item>
+        <item>60 s (needs receiver --stale-after ≥150)</item>
     </string-array>
     <string-array name="heartbeat_values">
         <item>5</item>
