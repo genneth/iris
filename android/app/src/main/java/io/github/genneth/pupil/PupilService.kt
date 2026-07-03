@@ -77,11 +77,16 @@ class PupilService : Service(), SensorEventListener {
 
         override fun onAdvertisingSetStopped(set: AdvertisingSet?) {
             // Bluetooth toggled off/on invalidates the set — recreate it.
+            // Pending-op callbacks for a torn-down set may never arrive, so unwedge here too.
+            inFlight = false
+            sendQueued = false
             advertisingSet = null
             if (PupilState.running) handler.postDelayed({ startAdvertising() }, 1000)
         }
 
         override fun onAdvertisingDataSet(set: AdvertisingSet?, status: Int) {
+            // A late callback from a torn-down set must not clear the new set's in-flight state.
+            if (set !== advertisingSet) return
             inFlight = false
             if (sendQueued) {
                 sendQueued = false
@@ -105,22 +110,23 @@ class PupilService : Service(), SensorEventListener {
         createChannel()
         startForeground(NOTIFICATION_ID, buildNotification("starting…"))
         PupilState.running = true
-        acquireSensor()
+        if (!acquireSensor()) return START_NOT_STICKY
         startAdvertising()
         handler.postDelayed(heartbeat, config.heartbeatMs)
         return START_STICKY
     }
 
     /** Spec §4a: wakeup ALS (rung 1) if the hardware has one, else wakelock (rung 2). */
-    private fun acquireSensor() {
+    private fun acquireSensor(): Boolean {
         val sm = getSystemService(SENSOR_SERVICE) as SensorManager
         sensorManager = sm
         val wakeup: Sensor? = sm.getDefaultSensor(Sensor.TYPE_LIGHT, true)
         val sensor = wakeup ?: sm.getDefaultSensor(Sensor.TYPE_LIGHT)
         if (sensor == null) {
+            Log.e(TAG, "no TYPE_LIGHT sensor on this device")
             PupilState.sensorRung = "no light sensor at all?!"
             stopSelf()
-            return
+            return false
         }
         if (wakeup != null) {
             PupilState.sensorRung = "rung 1: wakeup ALS (${sensor.name}), no wakelock"
@@ -131,6 +137,7 @@ class PupilService : Service(), SensorEventListener {
             PupilState.sensorRung = "rung 2: non-wakeup ALS (${sensor.name}) + partial wakelock"
         }
         sm.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+        return true
     }
 
     @SuppressLint("MissingPermission") // checked in onStartCommand
