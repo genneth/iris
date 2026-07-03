@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- iris -->
+    <path android:pathData="M54,54m-26,0a26,26 0 1,0 52,0a26,26 0 1,0 -52,0"
+        android:fillColor="@color/pupil_iris" />
+    <path android:pathData="M54,54m-26,0a26,26 0 1,0 52,0a26,26 0 1,0 -52,0"
+        android:strokeColor="#FFFFFF" android:strokeWidth="3" android:fillColor="#00000000" />
+    <!-- Bluetooth rune as the pupil -->
+    <path android:pathData="M54,38 L54,70 M54,38 L63,46 L45,62 M54,70 L63,62 L45,46"
+        android:strokeColor="#FFFFFF" android:strokeWidth="4"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+</vector>

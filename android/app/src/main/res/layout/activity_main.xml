@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="24dp">
+
+    <TextView android:id="@+id/statusText"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="stopped" android:textSize="16sp" />
+
+    <TextView android:id="@+id/luxText"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="—" android:textSize="48sp" android:paddingVertical="16dp" />
+
+    <TextView android:id="@+id/sensorReport"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="" android:textSize="13sp" android:fontFamily="monospace"
+        android:paddingBottom="16dp" />
+
+    <Button android:id="@+id/toggleButton"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Start broadcasting" />
+
+    <Button android:id="@+id/batteryButton"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Battery exemption…" />
+
+    <Button android:id="@+id/settingsButton"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Settings" />
+</LinearLayout>
