@@ -3,6 +3,7 @@ package io.github.genneth.pupil
 import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertiseData
@@ -243,6 +244,13 @@ class PupilService : Service(), SensorEventListener {
             .setContentTitle("Pupil")
             .setContentText(text)
             .setOngoing(true)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    this, 0,
+                    Intent(this, MainActivity::class.java),
+                    PendingIntent.FLAG_IMMUTABLE,
+                )
+            )
             .build()
 
     @SuppressLint("MissingPermission")
