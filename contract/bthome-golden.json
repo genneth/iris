@@ -1,0 +1,10 @@
+{
+  "comment": "BTHome v2 service-data payloads (no AD header / UUID). Kotlin BthomeEncoder must produce service_data_hex from (packet_id, input_lux); Python decode must recover (packet_id, decoded_lux). decoded_lux differs from input_lux only by 0.01-lx quantisation / uint24 clamping.",
+  "cases": [
+    {"description": "spec worked example", "packet_id": 42, "input_lux": 143.5, "decoded_lux": 143.5, "service_data_hex": "40002a050e3800"},
+    {"description": "bthome.io spec's own illuminance example", "packet_id": 0, "input_lux": 13460.67, "decoded_lux": 13460.67, "service_data_hex": "40000005138a14"},
+    {"description": "darkness, packet id wraps high", "packet_id": 255, "input_lux": 0.0, "decoded_lux": 0.0, "service_data_hex": "4000ff05000000"},
+    {"description": "clamped at uint24 ceiling", "packet_id": 1, "input_lux": 200000.0, "decoded_lux": 167772.15, "service_data_hex": "40000105ffffff"},
+    {"description": "sub-resolution rounds to 0.01 lx", "packet_id": 7, "input_lux": 0.006, "decoded_lux": 0.01, "service_data_hex": "40000705010000"}
+  ]
+}
