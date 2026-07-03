@@ -8,10 +8,12 @@ the rest. Brightness only (no colour temperature).
 **IR**is — heritage name: the infrared-sensor exploration ([FINDINGS.md](./FINDINGS.md)) is what
 taught us the camera's behaviour. The shipping design uses the RGB sensor.
 
-**Status (2026-06-25):** **MVP working, full loop validated** — the iris daemon turns the webcam
+**Status (2026-07-03):** **MVP working, full loop validated** — the iris daemon turns the webcam
 into a virtual ambient-light sensor, and GNOME's native auto-brightness moves the real backlight in
 response (covering the lens dims the screen; bright light raises it). Runs via `sudo` pending a
-`/dev/uhid` udev rule; tuning the lux→brightness range is the next refinement. See **[STATUS.md](./STATUS.md)**.
+`/dev/uhid` udev rule; tuning the lux→brightness range is the next refinement — and the sink
+decision has been **reopened** after validating a much simpler direct-to-GNOME variant
+(`SetAutoBrightnessTarget`; DESIGN §2 update). See **[STATUS.md](./STATUS.md)**.
 
 ## Docs
 

@@ -9,7 +9,8 @@
 feeds real camera lux to the virtual ALS, and GNOME's native auto-brightness moves the real backlight
 in response (covering the lens dims the panel; bright light raises it). Runs via sudo pending a
 `/dev/uhid` udev rule; lux→brightness range needs tuning (see STATUS). This supersedes the earlier
-"iris writes brightness" (Tier-2) approach — see §2.
+"iris writes brightness" (Tier-2) approach — see §2. **(2026-07-03: sink decision reopened — a
+simpler direct `SetAutoBrightnessTarget` variant is now validated; see the §2 update.)**
 Provenance: original brief [DESIGN-v1.md](./DESIGN-v1.md); empirical results [FINDINGS.md](./FINDINGS.md);
 progress + open questions [STATUS.md](./STATUS.md).
 
@@ -44,6 +45,19 @@ result is zero-fighting native integration. (Rejected Tier-1 variants: a custom 
 fragile on an immutable host; impersonating `net.hadess.SensorProxy` — simpler code but makes iris
 a privileged system daemon. The uhid virtual HID ALS keeps iris a user-space service and the system
 stock; only a udev rule is added.)
+
+**Update (2026-07-03) — a second Tier-1 variant is validated and the sink decision is reopened.**
+`org.gnome.Shell.Brightness.SetAutoBrightnessTarget` — the very call gsd-power makes — is a
+*published, sender-unrestricted* session-bus API, driven live from an unprivileged process
+(FINDINGS 2026-07-03). Calling it directly ("**Tier 1b**") would replace the entire
+uhid→kernel→iio-sensor-proxy→gsd chain with one D-Bus call: no root/udev, iris owns the
+curve+smoothing (escaping gsd's hardcoded 1.5× linear law and re-anchor quirks, BRIGHTNESS-MATH §3),
+shutdown/crash recovery is `SetAutoBrightnessTarget(-1)`, and the hotkeys/slider are untouched —
+they integrate inside gnome-shell, downstream of the target, identically for both variants. Costs:
+no native Settings "Automatic Brightness" toggle, and coupling to a newer shell API (function
+breaks loudly on API change, vs. the uhid path's behaviour drifting silently with gsd internals).
+It is still not Tier 2 — there remains exactly one brightness writer, the shell. Decision:
+STATUS Next №1; arithmetic: BRIGHTNESS-MATH §6.
 
 ## 3. The virtual-ALS recipe (validated — the hard-won part)
 
@@ -123,16 +137,20 @@ consideration (§STATUS, BRIGHTNESS-MATH §3).
 
 - **A udev rule granting `/dev/uhid` access** (system, one-time — `almon` territory) so the daemon
   runs as a **`systemd --user` service** (no root), tied to the graphical session (camera access is
-  session-scoped via the uaccess ACL).
+  session-scoped via the uaccess ACL). *(Security note, 2026-07-03: `/dev/uhid` lets any session
+  process create arbitrary HID devices — including keyboards, i.e. session-wide keystroke injection
+  bypassing Wayland input isolation. Acceptable on this box; if ever shipping, split privilege — a
+  tiny system service owns uhid and takes lux over a socket. The Tier-1b sink (§2) needs none of this.)*
 - `iio-sensor-proxy` is already installed and needs **no changes** — it auto-detects the new IIO
   device. The user enables GNOME's "Automatic Brightness" toggle once (it appears when a sensor exists).
-- **Clean-release lifecycle (critical).** gsd only leaves auto mode on a `ReleaseLight` issued *while
-  the sensor is still present* (see [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md) §5). iris's shutdown must
-  trigger that release **before** the uhid device vanishes — otherwise stopping iris mid-session bricks
-  manual brightness (stuck high auto target; bottom of range unreachable) until a shell restart. Logout
-  is safe (session-inactive auto-releases); a mid-session stop/crash is the danger. Design the
-  `systemd --user` unit's stop path accordingly (and consider an upstream gsd report: it ought to send
-  `-1` on sensor-gone, not only on `ReleaseLight`).
+- **Clean-release lifecycle (defused 2026-07-03; keep the polite path).** gsd only leaves auto mode on
+  a `ReleaseLight` issued *while the sensor is still present* (see
+  [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md) §5) — so iris's shutdown should still trigger that release
+  **before** the uhid device vanishes. But the failure is no longer catastrophic: any session process
+  can send `SetAutoBrightnessTarget(-1)` directly to clear stuck auto mode (validated live;
+  BRIGHTNESS-MATH §6) — put it in the unit's `ExecStopPost=`. Logout is safe (session-inactive
+  auto-releases). (Upstream nicety still worth reporting: gsd ought to send `-1` on sensor-gone, not
+  only on `ReleaseLight`.)
 - **Language: Python** for now (validated; `linuxpy` + `hid-tools`, pure wheels, runs entirely on
   the host — no toolbox/gcc needed). Resident footprint ~30–50 MB is fine here; revisit Rust (~5 MB)
   only if it ever matters.
@@ -144,6 +162,13 @@ daemon (`clightd` → sysfs/DDC). iris instead **only senses** and lets GNOME dr
 native UI/hotkey coherence, and it would default to the *wrong* camera on this dual-sensor laptop
 (clight prefers the higher `/dev/videoN`, i.e. the IR cam). We crib clight's brightness-*estimate*
 algorithm (§5); we do not adopt its architecture. (Full comparison in git history / earlier revisions.)
+
+Also **wluma** (https://github.com/maximbaz/wluma, Wayland): uses the webcam as an ALS when no real
+sensor exists, and — most relevantly — handles the screen-feedback loop by **capturing the screen
+contents** and learning from the user's manual adjustments, rather than modelling backlight alone.
+Its architecture is Tier-2 (writes the backlight itself; would fight GNOME, and its capture path is
+wlroots-only, dead on Mutter) — rejected for the same reasons as clight — but its feedback-loop
+treatment is the strongest prior art for the screen-feedback open question (STATUS).
 
 ## 9. References
 

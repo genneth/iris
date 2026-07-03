@@ -178,6 +178,10 @@ external way to set screen brightness outside the desktop's own controls. Plus t
 lifecycle footgun**: a sensor vanishing without a clean `ReleaseLight` leaves gnome-shell stuck in auto
 mode, bricking manual brightness. Full mechanism + the rehearsed clean-release fix in
 [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md) §5.
+*(2026-07-03 caveats: some of these decoupling observations may have been recorded while mutter was
+mis-bound to the phantom `nvidia_0` backlight — the tell wasn't known yet; re-check before load-bearing
+use (the Tier-1 conclusion stands via other paths). And the footgun is now **defused**: any session
+process can send `SetAutoBrightnessTarget(-1)` directly. See the 2026-07-03 section below.)*
 
 **fn keys bypass mutter (2026-06-25).** Adjusting brightness with the laptop's keys moved the hardware
 (`intel_backlight` sysfs 45→63) but left mutter's `Backlight` property at 45 — so the keys are
@@ -186,6 +190,8 @@ sysfs writes now stick (the stuck auto target earlier would have clobbered them)
 the keys don't reach the shell, they may not emit `BrightnessChanged` → may not re-anchor gsd (§3) — so
 re-anchoring might require the quick-settings *slider*, not the keys. (Also softens the earlier "range
 shifted because the keys re-anchored" reading.) Verify when iris is wired up.
+**→ Resolved 2026-07-03:** the keys are kernel-handled *writes*, but the shell **observes** the change
+and both tracks `S` and emits `BrightnessChanged` — the keys *do* re-anchor. See the 2026-07-03 section.
 
 ## §10 research-question scorecard
 
@@ -198,3 +204,75 @@ shifted because the keys re-anchored" reading.) Verify when iris is wired up.
 | Q5 noise/lag, sample rate + smoothing? | AE settle ~3–4 s (manual avoids); downstream smoothing is gsd's EMA **τ ≈ 1.6 s** (not ~10 s — see BRIGHTNESS-MATH) |
 | Q6 privacy-LED blink, minimise? | Emitter only while streaming; RGB privacy-LED behaviour needs user observation |
 | Q7 daemon footprint? | Not yet measured; architecture decided (static-musl `systemd --user`) |
+
+## Live brightness-stack incident — mutter mis-binding, fn-key mechanism, direct sink (2026-07-03)
+
+> From the design-review session, poking the live stack (gnome-shell 50.2 / mutter, hybrid
+> Intel iGPU + NVIDIA dGPU). Net: **two mutter hotplug bugs**, the **fn-key story resolved**, and a
+> **validated direct sink** that reopens the sink decision (STATUS Next №1). All values are raw
+> `intel_backlight` units (max 400) unless noted.
+
+**The incident.** After a lid close→open (18:41), every GNOME-side brightness control silently died:
+fn keys / slider / auto targets all updated GNOME's model (OSD, `BrightnessChanged` signals, mutter
+property at 100/100) but the panel never moved — hardware sat frozen at 62/400 (15.5%). The system
+felt "flaky"; it was one bug.
+
+**Mutter hotplug bug 1 — backlight bound to the wrong device.** The lid-open re-created the
+`intel_backlight` sysfs device (symlink timestamp = lid-open time), and mutter re-bound eDP-1's
+backlight to the dGPU's phantom **`nvidia_0`** (min 1/max 100 — controls nothing on this machine).
+Proof: `DisplayConfig.SetBacklight(serial, "eDP-1", 60)` → mutter property 59 **and
+`nvidia_0/brightness` = 59**, `intel_backlight` unchanged. **Instant tell:** the `Backlight` property
+reads `max 100` (nvidia) instead of `max 400` (intel). **Recovery:** only another lid close→open
+re-bound it (property → `min 4 max 400`); DPMS off/on and `udevadm trigger --action=change` on the
+`drm`/`backlight` subsystems did *not*; re-login is the deterministic fallback. Direct root writes to
+`intel_backlight` sysfs moved the panel throughout — the kernel path was never broken.
+
+**Mutter hotplug bug 2 — stale `Backlight` D-Bus property.** Even after re-binding, shell-driven
+changes move the hardware while the D-Bus property stays frozen: a 300 ms-sampled trace shows
+`mutter=62` throughout a shell-driven sysfs 101→200→101 round-trip (and throughout fn-key stepping).
+It *did* update on an external `SetBacklight` call, so the staleness is selective. ⇒ **Read sysfs
+for current state, never the D-Bus property.**
+
+**Upstream status (2026-07-03, searched).** Bug 1 is **known**:
+[mutter #4432](https://gitlab.gnome.org/GNOME/mutter/-/issues/4432) "Wrong backlight interface being
+used after suspend" (open; i915 + nvidia-open hybrid, suspend/resume as the trigger — same
+re-enumeration event as our lid cycle), with a **draft fix**
+[mutter !4746](https://gitlab.gnome.org/GNOME/mutter/-/merge_requests/4746) ("Re-create monitors when
+backlight devices change") whose description confirms our mechanism verbatim (KMS and sysfs backlight
+device changes are not atomic). Related: [mutter #3233](https://gitlab.gnome.org/GNOME/mutter/-/issues/3233)
+(picks non-working `nvidia_0` at steady state, closed not-actionable),
+[gnome-shell #8883](https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/8883) (multi-device
+mis-binding, amdgpu/ddcci), and a
+[Fedora Discussion thread](https://discussion.fedoraproject.org/t/gnome49-cant-control-display-brightness/172279)
+tying the same hybrid-NVIDIA symptom to #4432. Bug 2 (stale `Backlight` property) appears
+**unreported** — closest are [gnome-shell #8852](https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/8852)
+(slider doesn't track external writes, the inverse direction) and Launchpad #2081294 (incomplete
+`Backlight` PropertiesChanged after resume). Decision: not filing anything for now; our evidence
+(timestamped traces, the `max 100` tell, DPMS/udev non-fixes) lives in this section if we ever
+comment on #4432 or file bug 2. Adjacent open bug on this exact stack:
+[mutter #4856](https://gitlab.gnome.org/GNOME/mutter/-/issues/4856) (logind `NotYourDevice` on
+backlight writes during session handoff, Fedora 44 hybrid).
+
+**fn-key mechanism — resolved.** `/sys/module/video/parameters/brightness_switch_enabled = Y`: the
+**kernel ACPI video handler steps the backlight itself**, in uniform ~10% steps (121→161→200→240…
+at auto-repeat cadence in the trace) — not GNOME's ≤20-step slider stepping. GNOME then **observes**
+the external change (`syncWithBacklight`): the slider `S` tracked the keys (releasing auto mode with
+`-1` landed exactly on the key-set value, twice), and `BrightnessChanged` fires (observed as a
+per-press signal burst). So the 2026-06-25 "keys bypass mutter" reading was right about the **write**
+path but missed the **observation** path: the keys integrate with GNOME state after the fact and
+provide the re-anchor signal — for gsd or any other auto-brightness source. (Signal emission in the
+healthy state inferred from S-tracking + the burst observed pre-rebind; one-command re-verify:
+`gdbus monitor --session --dest org.gnome.Shell --object-path /org/gnome/Shell/Brightness` while
+pressing. The handler emits per repeat step — hundreds when held — so re-anchor logic wants a
+~300 ms debounce.)
+
+**Direct sink validated ("Tier-1b").** `org.gnome.Shell.Brightness.SetAutoBrightnessTarget` is a
+**published** session-bus interface (`/usr/share/dbus-1/interfaces/org.gnome.Shell.Brightness.xml`)
+with **no sender restriction**: unprivileged calls drove the panel (T=0.9 → 62→122; T=0.75 →
+101→200) and `-1` cleanly restored manual mode each time. Corollary: **the stuck-auto-mode footgun
+(BRIGHTNESS-MATH §5) is defused** — any process can send `-1`; no shell restart needed. Implications
+and arithmetic: BRIGHTNESS-MATH §6; sink decision: STATUS Next №1.
+
+**iris hardening note.** When bug 1 strikes, auto-brightness (either sink) dies silently while GNOME's
+model keeps updating. iris should watchdog "target changed but `intel_backlight` sysfs didn't move"
+(or the max-100 tell) and warn.

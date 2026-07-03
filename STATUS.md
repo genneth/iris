@@ -1,6 +1,6 @@
 # iris — status
 
-_Updated 2026-06-25. Architecture validated; daemon not yet built._
+_Updated 2026-07-03. MVP validated end-to-end; sink decision reopened (see Next №1)._
 
 ## ✅ Done
 
@@ -72,21 +72,58 @@ _Updated 2026-06-25. Architecture validated; daemon not yet built._
   bricking manual brightness. Rehearsed the fix (claim a live sensor → disable ambient → clean release
   → `-1`). Detail in [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md) §5.
 
+- **Design review + live brightness-stack session (2026-07-03).** Full-project review plus a live
+  incident investigation. Key outcomes (detail: FINDINGS 2026-07-03, BRIGHTNESS-MATH §6):
+  - **Direct sink validated ("Tier-1b"):** `org.gnome.Shell.Brightness.SetAutoBrightnessTarget` is a
+    *published, sender-unrestricted* session-bus API — unprivileged calls drove the real panel and
+    `-1` cleanly restored manual mode, repeatedly. Candidate replacement for the whole
+    uhid→kernel→iio-sensor-proxy→gsd chain: no root/udev, iris owns curve+smoothing, clean `-1`
+    shutdown, hotkeys/slider unaffected. Sink decision reopened → Next №1.
+  - **Stuck-auto-mode footgun defused:** `-1` can be sent by *any* session process, so a crashed
+    iris no longer bricks brightness until a shell restart — one `gdbus` call recovers (either sink).
+  - **fn-key mechanism resolved:** the kernel ACPI handler (`video.brightness_switch_enabled=Y`)
+    steps the backlight directly (~10% steps); GNOME *observes* the change (`syncWithBacklight`):
+    slider `S` tracks it and `BrightnessChanged` fires → hotkeys re-anchor and coexist with *any*
+    auto-brightness source. The 2026-06-25 "keys bypass mutter" was right about writes, incomplete
+    about observation.
+  - **Two mutter hotplug bugs found** (lid close→open): (1) backlight re-bound to the dGPU's
+    phantom `nvidia_0` — all GNOME brightness writes void until *another* lid cycle (DPMS/udev pokes
+    don't fix; tell: `Backlight` property `max 100` not `400`); (2) the D-Bus `Backlight` property
+    goes stale (hardware moves, property frozen) → read sysfs, never the property. Upstream: (1) is
+    known — mutter #4432, draft fix !4746 pending; (2) appears unreported (links in FINDINGS).
+  - **Calibration correction:** publish a **power law of luminance** (`L ∝ lum^β`), never a
+    log-domain EV (negative → u32-clamped to 0 → gsd's `L>0` gate discards it; ratios of logs aren't
+    shift-invariant). BRIGHTNESS-MATH §3.
+  - **Phone-ALS plan adopted:** use the phone's calibrated lux sensor for the missing bright anchor
+    + monotonicity walk (Termux `termux-sensor`, no app needed); optional later: a BTHome-over-BLE
+    broadcaster as an opportunistic live sensor (laptop BT adapter confirmed ready).
+  - **MVP code debts flagged:** `daemon.py`'s `finally: als.destroy()` triggers the §5 footgun today
+    (now recoverable via `-1`); continuous streaming **blocks video calls** (V4L2 exclusivity) —
+    duty-cycling/`EBUSY` back-off is functional, not just power; uhid `dispatch()` is frame-paced and
+    breaks at 1 fps exposures; stale defaults/comments (exp 1500, "~10 s EMA" in daemon.py).
+
 ## ⏳ Next
 
-1. **Camera output pipeline (priority; reduction + ranging decided, build parked by user).** Decided:
-   report `logmean`; drop the `MAX_LUX` "lux" framing (ratios only); auto-range exposure(+gain) and
-   fold the settings back in for a wide-range EV proxy `∝ γ·logmean − log(exposure·gain)`. **Parked
-   until ready:** building the auto-ranging loop. **Still pending data:** a daytime/window bright
-   anchor (night-time flashlight proved the mechanism, not a calibrated top), and a
-   dim→normal→bright `watch` walk to confirm the EV proxy is monotonic across conditions.
-2. **Deployment:** a udev rule for `/dev/uhid` so the daemon runs as a `systemd --user` service
-   (currently needs sudo), plus the unit bound to the graphical session — and decide how to get
-   gsd-power to claim the sensor at startup (the `ambient-enabled` toggle, or appearing before login).
-3. **Power: re-measure rigorously** (see Open questions): interleaved on/off cycles on a genuinely
+1. **Decide the sink (new, 2026-07-03):** uhid virtual ALS (current, validated) **vs** direct
+   `SetAutoBrightnessTarget` (validated 2026-07-03 — no root/udev, iris owns the curve+smoothing
+   and escapes gsd's hardcoded 1.5× law, `-1` on stop, hotkeys unaffected; costs: no native Settings
+   toggle, coupling to a newer shell API). The review leans direct — the prototype is small since
+   sensing is unchanged. DESIGN §2 update, BRIGHTNESS-MATH §6.
+2. **Camera output pipeline (reduction + ranging decided, build parked by user).** Decided:
+   reduce with `logmean`; drop the `MAX_LUX` "lux" framing (ratios only); auto-range exposure(+gain)
+   into an EV `= γ·logmean − log(exposure·gain)` — but **publish `L ∝ exp(β·EV)`** (a power law of
+   luminance), never the raw log-domain EV (BRIGHTNESS-MATH §3; applies to the uhid sink — the
+   direct sink owns the curve and can use EV natively). **Still pending data:** a daytime/window
+   bright anchor and a dim→normal→bright monotonicity walk — use the **phone ALS** as ground truth
+   for both (Termux `termux-sensor -s light`; see Open questions).
+3. **Deployment** (shape depends on №1): uhid path needs the `/dev/uhid` udev rule (mind the
+   keystroke-injection security note, DESIGN §7) + the gsd claim nudge at startup; the direct path
+   is a plain `systemd --user` unit with `ExecStopPost` sending `-1`.
+4. **Power: re-measure rigorously** (see Open questions): interleaved on/off cycles on a genuinely
    idle system, or an external USB meter.
-4. **Revisit the parked trade-offs:** open/close vs continuous (LED blink vs steady), camera
-   contention / `EBUSY` back-off, adaptive cadence.
+5. **Revisit the parked trade-offs:** open/close vs continuous (LED blink vs steady) — noting
+   continuous streaming **blocks video calls** (V4L2 streaming is exclusive), so duty-cycling +
+   `EBUSY` back-off is a functional requirement, not just power; adaptive cadence.
 
 ## ❓ Open questions / considerations
 
@@ -115,10 +152,22 @@ _Updated 2026-06-25. Architecture validated; daemon not yet built._
   also feed the trigger/buffer.
 - **Session lifecycle.** Behaviour at the login screen, on lock, and with no active session (camera
   uaccess is session-scoped; the daemon should pause cleanly).
-- **Clean-release lifecycle (deployment-critical).** iris must cause gsd to `ReleaseLight` *before* its
-  uhid sensor disappears, or stopping mid-session bricks manual brightness until a shell restart
-  (BRIGHTNESS-MATH §5; rehearsed 2026-06-25). Logout is safe. Design the unit's stop path; maybe report
-  upstream that gsd should send `-1` on sensor-gone, not only on `ReleaseLight`.
+- **Clean-release lifecycle (defused 2026-07-03, keep the polite path).** iris should still cause gsd
+  to `ReleaseLight` *before* its uhid sensor disappears (BRIGHTNESS-MATH §5) — but the failure mode is
+  no longer catastrophic: **any session process can send `SetAutoBrightnessTarget(-1)` directly** to
+  clear stuck auto mode (validated live), so a crash costs one `gdbus` call / `ExecStopPost=`, not a
+  shell restart. Upstream nicety still stands (gsd should send `-1` on sensor-gone).
+- **Mutter backlight wedging after lid events (found 2026-07-03).** A lid cycle can re-bind mutter's
+  backlight to the phantom `nvidia_0` device, silently killing all GNOME brightness writes (and hence
+  auto-brightness, either sink) until another lid cycle. iris should watchdog "my target changed but
+  `intel_backlight` sysfs didn't" (or the `Backlight`-property `max 100` tell) and warn the user.
+  Also: **never read the D-Bus `Backlight` property for current state** (it goes stale) — read sysfs.
+- **Phone ALS (adopted for calibration; optional live source).** The phone's calibrated lux sensor
+  supplies the missing bright anchor + monotonicity ground truth via Termux (`termux-sensor -s light`,
+  streamed over ssh/HTTP). Possible follow-on: a small Android app broadcasting BTHome-v2 BLE adverts
+  (service data `0xFCD2`, illuminance object `0x05`), read host-side via BlueZ/bleak — but only as an
+  *opportunistic* boost (pocket/face-down ⇒ lux 0): gate on freshness/plausibility, webcam remains
+  the foundation. (Assumes Android; iOS exposes no public ALS API.)
 - **Final language.** Python is validated and fine on footprint (~30–50 MB). Revisit Rust (~5 MB)
   only if a resident daemon's footprint becomes a concern.
 - **Daylight dynamic range.** Confirm the lux scale spans real bright conditions (pending a daylight test).
