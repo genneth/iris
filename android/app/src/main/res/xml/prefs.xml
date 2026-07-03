@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <ListPreference
+        android:key="interval_ms" android:title="Advertising interval"
+        android:entries="@array/interval_labels" android:entryValues="@array/interval_values"
+        android:defaultValue="400" android:summary="%s" />
+    <ListPreference
+        android:key="tx_power" android:title="TX power"
+        android:entries="@array/tx_labels" android:entryValues="@array/tx_values"
+        android:defaultValue="low" android:summary="%s" />
+    <ListPreference
+        android:key="deadband_pct" android:title="Deadband"
+        android:entries="@array/deadband_labels" android:entryValues="@array/deadband_values"
+        android:defaultValue="5" android:summary="%s" />
+    <ListPreference
+        android:key="heartbeat_s" android:title="Heartbeat"
+        android:entries="@array/heartbeat_labels" android:entryValues="@array/heartbeat_values"
+        android:defaultValue="10" android:summary="%s" />
+</PreferenceScreen>
