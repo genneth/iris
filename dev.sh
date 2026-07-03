@@ -32,12 +32,16 @@ case "${1:-check}" in
     (cd rust && cargo fmt --check)
     (cd rust && cargo clippy --all-targets -- -D warnings)
     ;;
+  android)
+    # gradle runs in the dev toolbox on the user-scoped JDK 21
+    toolbox run -c dev bash -lc "cd '$PWD/android' && JAVA_HOME=~/.local/opt/jdk-21 ./gradlew --console=plain testDebugUnitTest"
+    ;;
   setup)
     git config core.hooksPath hooks
     echo "git hooks enabled (core.hooksPath=hooks)"
     ;;
   *)
-    echo "usage: ./dev.sh {check|fmt|lint|typecheck|test|rust-check|setup}" >&2
+    echo "usage: ./dev.sh {check|fmt|lint|typecheck|test|rust-check|android|setup}" >&2
     exit 2
     ;;
 esac
