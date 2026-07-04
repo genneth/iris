@@ -33,8 +33,8 @@ case "${1:-check}" in
     (cd rust && cargo clippy --all-targets -- -D warnings)
     ;;
   android)
-    # gradle runs in the dev toolbox on the user-scoped JDK 21
-    toolbox run -c dev bash -lc "cd '$PWD/android' && JAVA_HOME=~/.local/opt/jdk-21 ./gradlew --console=plain testDebugUnitTest"
+    # gradle runs in the dev toolbox on the toolbox's dnf java (JDK 25); SDK at ~/Android/Sdk
+    toolbox run -c dev bash -lc "cd '$PWD/android' && ./gradlew --console=plain testDebugUnitTest"
     ;;
   setup)
     git config core.hooksPath hooks

@@ -2,15 +2,22 @@
 
 iris's star pupil: broadcasts the phone's ambient-light sensor as BTHome v2 BLE
 adverts (non-connectable; receivable by `python/scripts/ble_als_probe.py`, Home
-Assistant, or anything BTHome-aware). Spec:
-`docs/superpowers/specs/2026-07-03-pupil-ble-als-design.md`.
+Assistant, or anything BTHome-aware). Specs:
+`docs/superpowers/specs/2026-07-03-pupil-ble-als-design.md` (behaviour) and
+`docs/superpowers/specs/2026-07-04-pupil-compose-design.md` (Compose UI).
+
+The UI is **Jetpack Compose** (Material 3, dynamic colour, one adaptive screen —
+single column folded, two-pane on the Find N6's unfolded inner display).
 
 ## Build & install
 
-    toolbox run -c dev bash -lc 'cd ~/iris/android && JAVA_HOME=~/.local/opt/jdk-21 ./gradlew :app:assembleDebug'
+    toolbox run -c dev bash -lc 'cd ~/iris/android && ./gradlew :app:assembleDebug'
     toolbox run -c dev bash -lc 'cd ~/iris/android && ~/Android/Sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk'
 
-Toolchain: gradle 9.6.1 bootstrap (~/.local/bin), wrapper Gradle 8.10.2, Temurin JDK 21 at ~/.local/opt/jdk-21, SDK at ~/Android/Sdk (platforms;android-35, build-tools;35.0.0). Unit tests: `./dev.sh android`.
+Toolchain (all in the `dev` toolbox): AGP 9.2.0 / Gradle wrapper 9.6.1 / Kotlin
+2.3.21 (AGP built-in) / compileSdk+targetSdk 36. Runs on the toolbox's dnf
+`java-25-openjdk` — no `JAVA_HOME` prefix. Android SDK at `~/Android/Sdk`
+(platforms;android-36, build-tools;36.0.0). Unit tests: `./dev.sh android`.
 
 ## ColorOS survival checklist (do all of these once)
 
