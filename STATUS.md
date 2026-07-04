@@ -1,6 +1,6 @@
 # iris — status
 
-_Updated 2026-07-03. MVP validated end-to-end; sink decision reopened (see Next №1)._
+_Updated 2026-07-04. Reflex (phone-ALS, direct sink) built end-to-end; webcam MVP parked (see Next №1)._
 
 ## ✅ Done
 
@@ -104,11 +104,11 @@ _Updated 2026-07-03. MVP validated end-to-end; sink decision reopened (see Next 
 
 ## ⏳ Next
 
-1. **Decide the sink (new, 2026-07-03):** uhid virtual ALS (current, validated) **vs** direct
-   `SetAutoBrightnessTarget` (validated 2026-07-03 — no root/udev, iris owns the curve+smoothing
-   and escapes gsd's hardcoded 1.5× law, `-1` on stop, hotkeys unaffected; costs: no native Settings
-   toggle, coupling to a newer shell API). The review leans direct — the prototype is small since
-   sensing is unchanged. DESIGN §2 update, BRIGHTNESS-MATH §6.
+1. **~~Decide the sink~~ — resolved 2026-07-04: direct sink, built as Reflex.** Chose direct
+   `SetAutoBrightnessTarget` over the uhid virtual ALS (no root/udev, iris owns the curve+smoothing
+   and escapes gsd's hardcoded 1.5× law, `-1` on stop, hotkeys unaffected). See the new Done entry
+   above, DESIGN §2, and BRIGHTNESS-MATH §6. The webcam/uhid path is parked, not removed — its
+   camera-lux calibration work (№2 below) still applies if it's ever revisited.
 2. **Camera output pipeline (reduction + ranging decided, build parked by user).** Decided:
    reduce with `logmean`; drop the `MAX_LUX` "lux" framing (ratios only); auto-range exposure(+gain)
    into an EV `= γ·logmean − log(exposure·gain)` — but **publish `L ∝ exp(β·EV)`** (a power law of
@@ -172,6 +172,18 @@ _Updated 2026-07-03. MVP validated end-to-end; sink decision reopened (see Next 
   plan docs/superpowers/plans/2026-07-03-pupil-ble-als.md, acceptance results android/README.md —
   screen-off streaming works on the Find N6 given ColorOS "Allow background activity"; TX low +
   default RSSI gate ship as-is).
+- **Sink decided and Reflex built (2026-07-04) — resolves Next №1.** Direct sink chosen: iris now
+  ships as **Reflex**, an async daemon (`python/src/iris/{config,curve,controller,shell_brightness,
+  daemon}.py`, spec `docs/superpowers/specs/2026-07-04-reflex-phone-als-brightness-design.md`) that
+  reads Pupil's BTHome lux over BLE, maps it through an absolute log-lux curve, eases toward the
+  target, and drives `org.gnome.Shell.Brightness.SetAutoBrightnessTarget` directly — no uhid, no
+  root, no camera. Freshness (`iris.pupil.PupilTracker`) gates DRIVING vs RELEASED; dropout releases
+  to manual (`-1`); a sysfs watchdog warns on the mutter #4432 wedge. Deploys as a `systemd --user`
+  unit (`python/deploy/iris.service`) with `ExecStopPost` belt-and-braces `-1`. **The webcam MVP path
+  is parked, not deleted** — `brightness.py`/`camera.py`/`virtual_als.py` and the old
+  `uhid_als_spike.py` recipe (DESIGN §3) stay in the tree, unused by the new entry point, in case the
+  uhid variant is revisited. Live on-device validation against the phone is tracked separately
+  (README "Run Reflex").
 - **Final language.** Python is validated and fine on footprint (~30–50 MB). Revisit Rust (~5 MB)
   only if a resident daemon's footprint becomes a concern.
 - **Daylight dynamic range.** Confirm the lux scale spans real bright conditions (pending a daylight test).

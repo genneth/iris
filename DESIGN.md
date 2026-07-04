@@ -59,6 +59,13 @@ breaks loudly on API change, vs. the uhid path's behaviour drifting silently wit
 It is still not Tier 2 — there remains exactly one brightness writer, the shell. Decision:
 STATUS Next №1; arithmetic: BRIGHTNESS-MATH §6.
 
+**Decided (2026-07-04): Tier-1b is the sink, and it's built.** For the phone-ALS mode ("Reflex" —
+Pupil's BLE lux replacing the webcam as the light source) iris drives
+`SetAutoBrightnessTarget`/`-1` directly from `python/src/iris/{shell_brightness,controller,
+daemon}.py`; the uhid virtual-ALS path (§3 below) is retained for the webcam sensor but not wired
+into the shipping entry point (`python -m iris`, STATUS "Sink decided and Reflex built"). Nothing
+in §3's descriptor recipe changes — it's parked, not obsoleted.
+
 ## 3. The virtual-ALS recipe (validated — the hard-won part)
 
 Present a HID ambient-light sensor on `/dev/uhid`; the kernel's stock `hid-sensor-hub` +

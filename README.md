@@ -46,3 +46,57 @@ sudo .venv/bin/python scripts/uhid_als_spike.py      # create the virtual ALS (n
 ```
 
 See [`python/scripts/README.md`](./python/scripts/README.md) for the full experiment index.
+
+## Run Reflex (phone-ALS, direct sink)
+
+Reflex is the shipping daemon: Pupil (the Android app, `android/`) broadcasts calibrated lux over
+BLE; iris reads it, maps it through an absolute log-lux curve, and drives GNOME's backlight via
+`org.gnome.Shell.Brightness.SetAutoBrightnessTarget` — no camera, no uhid, no root. Design:
+DESIGN.md §2 (Tier-1b), `docs/superpowers/specs/2026-07-04-reflex-phone-als-brightness-design.md`.
+
+**Run in the foreground** (needs the phone broadcasting Pupil nearby):
+
+```sh
+cd python && uv run python -m iris
+```
+
+Ctrl-C releases the backlight to manual and exits cleanly.
+
+**Install as a `systemd --user` service** (auto-starts with the graphical session):
+
+```sh
+mkdir -p ~/.config/systemd/user
+cp python/deploy/iris.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now iris.service
+journalctl --user -u iris -f       # follow the logs
+systemctl --user stop iris.service # releases to manual (-1) via ExecStopPost, belt-and-braces
+```
+
+The unit assumes the checkout lives at `~/iris` with the uv venv at `python/.venv`; edit
+`ExecStart=` in the copied unit file if yours lives elsewhere.
+
+**Calibration** — optional `~/.config/iris/config.toml` (all keys optional; see
+`iris/config.py` for the code defaults):
+
+```toml
+[curve]
+anchors = [[1, 0.08], [50, 0.35], [500, 0.7], [5000, 1.0]]  # [lux, target] pairs
+floor = 0.08
+ceil = 1.0
+
+[tracker]
+min_rssi = -75.0     # admit above +5, drop below -5 (hysteresis)
+stale_after = 25.0   # seconds of silence -> STALE -> release to manual
+dead_after = 30.0    # seconds with no BLE advert at all -> SCANNER_DEAD
+
+[ease]
+tau = 1.5            # seconds; how fast the panel eases toward the curve target
+push_hz = 10.0        # D-Bus push rate while driving
+epsilon = 0.002       # skip a push below this |delta target|
+```
+
+**Live-test result (spec §8 acceptance): pending on-device validation.** The daemon imports and
+typechecks cleanly (`import iris.daemon`, `./dev.sh check` green) but the engage/track/manual-bias/
+dropout/re-engage/clean-stop walk needs the phone actually broadcasting — to be run and recorded
+here by the human.
