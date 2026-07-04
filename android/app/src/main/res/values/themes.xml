@@ -1,8 +1,13 @@
 <resources>
-    <!-- NoActionBar: the AppCompat action bar mis-stacks under enforced edge-to-edge
-         (targetSdk 35) and duplicated nothing; the layout carries its own title. -->
-    <style name="Theme.Pupil" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/bluetooth_blue</item>
+    <!-- Material 3 Expressive (MDC 1.14). NoActionBar: the layout carries its own
+         title, and the action bar mis-stacks under enforced edge-to-edge (targetSdk 35+). -->
+    <style name="Theme.Pupil" parent="Theme.Material3Expressive.DayNight.NoActionBar">
         <item name="preferenceTheme">@style/PreferenceThemeOverlay</item>
+    </style>
+
+    <!-- M3 has no monospace type role; the sensor-report block wants fixed-width digits. -->
+    <style name="TextAppearance.Pupil.Mono" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:fontFamily">monospace</item>
+        <item name="fontFamily">monospace</item>
     </style>
 </resources>

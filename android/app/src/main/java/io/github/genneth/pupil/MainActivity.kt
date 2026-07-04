@@ -14,9 +14,13 @@ import android.provider.Settings
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class MainActivity : AppCompatActivity() {
 
@@ -28,22 +32,40 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Denied at least once this session: render a graceful disabled state instead of
+    // nudging toward system settings (current guidance says never deep-link there).
+    private var permissionsRefused = false
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.all { it }) {
+            permissionsRefused = false
+            startForegroundService(Intent(this, PupilService::class.java))
+        } else {
+            permissionsRefused = true
+        }
+        render()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContentView(R.layout.activity_main)
 
-        // targetSdk 35 enforces edge-to-edge: the window draws behind the system
-        // bars, so pad the root view by the system-bar insets (on top of its own
-        // 24dp padding) or content lands under the status bar.
+        // Edge-to-edge (enforced from targetSdk 35): pad the root by the system-bar
+        // and cutout insets on top of its own 24dp padding, and consume them.
         val root = findViewById<LinearLayout>(R.id.root)
         val basePad = root.paddingTop
-        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(
-                basePad + bars.left, basePad + bars.top,
-                basePad + bars.right, basePad + bars.bottom,
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, windowInsets ->
+            val insets = windowInsets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
-            insets
+            v.updatePadding(
+                left = basePad + insets.left, top = basePad + insets.top,
+                right = basePad + insets.right, bottom = basePad + insets.bottom,
+            )
+            WindowInsetsCompat.CONSUMED
         }
 
         findViewById<Button>(R.id.toggleButton).setOnClickListener {
@@ -53,14 +75,7 @@ class MainActivity : AppCompatActivity() {
                 ensurePermissionsThenStart()
             }
         }
-        findViewById<Button>(R.id.batteryButton).setOnClickListener {
-            // Load-bearing, not just ColorOS appeasement: Doze ignores wakelocks
-            // without this exemption (spec §4a).
-            startActivity(
-                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                    .setData(Uri.parse("package:$packageName"))
-            )
-        }
+        findViewById<Button>(R.id.batteryButton).setOnClickListener { requestBatteryExemption() }
         findViewById<Button>(R.id.settingsButton).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
@@ -77,41 +92,80 @@ class MainActivity : AppCompatActivity() {
         ui.removeCallbacks(refresh)
     }
 
+    private val wantedPermissions = arrayOf(
+        Manifest.permission.BLUETOOTH_ADVERTISE,
+        Manifest.permission.POST_NOTIFICATIONS,
+    )
+
     private fun ensurePermissionsThenStart() {
-        val wanted = arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.POST_NOTIFICATIONS)
-        val missing = wanted.filter {
+        val missing = wantedPermissions.filter {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missing.isEmpty()) {
-            startForegroundService(Intent(this, PupilService::class.java))
-        } else {
-            requestPermissions(missing.toTypedArray(), 1)
+        when {
+            missing.isEmpty() ->
+                startForegroundService(Intent(this, PupilService::class.java))
+            missing.any { shouldShowRequestPermissionRationale(it) } -> {
+                // Rationale step (with a real decline option) before re-asking.
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Why these permissions?")
+                    .setMessage(
+                        "Pupil broadcasts the light sensor as Bluetooth adverts — Android calls " +
+                            "that “Nearby devices”. The notification shows the live reading " +
+                            "while broadcasting runs."
+                    )
+                    .setPositiveButton("Continue") { _, _ ->
+                        permissionLauncher.launch(missing.toTypedArray())
+                    }
+                    .setNegativeButton("No thanks", null)
+                    .show()
+            }
+            else -> permissionLauncher.launch(missing.toTypedArray())
         }
     }
 
-    override fun onRequestPermissionsResult(code: Int, perms: Array<String>, granted: IntArray) {
-        super.onRequestPermissionsResult(code, perms, granted)
-        if (granted.isNotEmpty() && granted.all { it == PackageManager.PERMISSION_GRANTED }) {
-            startForegroundService(Intent(this, PupilService::class.java))
-        } else {
-            android.widget.Toast.makeText(
-                this,
-                "Bluetooth-advertise or notification permission denied — enable in Settings → Apps → Pupil",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
+    /** Explain-first, and only when not already exempt (spec §4a: Doze ignores wakelocks). */
+    private fun requestBatteryExemption() {
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) {
+            render()
+            return
         }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Allow unrestricted battery use?")
+            .setMessage(
+                "With the phone idle, Doze ignores wakelocks and screen-off broadcasting " +
+                    "freezes. The exemption keeps the light sensor streaming while the screen " +
+                    "is off. Costs roughly 1% battery per hour while broadcasting."
+            )
+            .setPositiveButton("Request") { _, _ ->
+                startActivity(
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        .setData(Uri.parse("package:$packageName"))
+                )
+            }
+            .setNegativeButton("Not now", null)
+            .show()
     }
 
     private fun render() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         val exempt = if (pm.isIgnoringBatteryOptimizations(packageName)) "exempt" else "NOT exempt"
-        findViewById<TextView>(R.id.statusText).text =
-            if (PupilState.running) "broadcasting · ${PupilState.sensorRung} · battery: $exempt"
-            else "stopped · battery: $exempt"
+        val granted = wantedPermissions.all {
+            checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
+        }
+        findViewById<TextView>(R.id.statusText).text = when {
+            PupilState.running -> "broadcasting · ${PupilState.sensorRung} · battery: $exempt"
+            permissionsRefused && !granted ->
+                "nearby-devices / notification permission refused — Pupil cannot broadcast"
+            else -> "stopped · battery: $exempt"
+        }
         findViewById<TextView>(R.id.luxText).text =
             PupilState.lastLux?.let { "%.1f lx  ·  #%d".format(it, PupilState.packetId) } ?: "—"
         findViewById<Button>(R.id.toggleButton).text =
             if (PupilState.running) "Stop broadcasting" else "Start broadcasting"
+        findViewById<Button>(R.id.batteryButton).text =
+            if (pm.isIgnoringBatteryOptimizations(packageName)) "Battery: exempt ✓"
+            else "Battery exemption…"
     }
 
     /** Spec §4: per-device sensor facts nobody has published for the Find N6. */

@@ -1,5 +1,10 @@
 <resources>
     <string name="app_name">Pupil</string>
+    <string name="status_stopped">stopped</string>
+    <string name="lux_placeholder">—</string>
+    <string name="start_broadcasting">Start broadcasting</string>
+    <string name="battery_exemption">Battery exemption…</string>
+    <string name="settings">Settings</string>
     <string-array name="interval_labels">
         <item>100 ms</item>
         <item>250 ms</item>

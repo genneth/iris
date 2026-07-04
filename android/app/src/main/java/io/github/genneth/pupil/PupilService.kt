@@ -235,6 +235,7 @@ class PupilService : Service(), SensorEventListener {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Pupil", NotificationManager.IMPORTANCE_LOW)
+                .apply { setShowBadge(false) }
         )
     }
 
@@ -244,6 +245,9 @@ class PupilService : Service(), SensorEventListener {
             .setContentTitle("Pupil")
             .setContentText(text)
             .setOngoing(true)
+            // A steady stream of ~1/s live-value updates must never re-alert or buzz.
+            .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(
                 PendingIntent.getActivity(
                     this, 0,
