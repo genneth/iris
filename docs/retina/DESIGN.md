@@ -12,7 +12,7 @@ in response (covering the lens dims the panel; bright light raises it). Runs via
 "iris writes brightness" (Tier-2) approach — see §2. **(2026-07-03: sink decision reopened — a
 simpler direct `SetAutoBrightnessTarget` variant is now validated; see the §2 update.)**
 Provenance: original brief [DESIGN-v1.md](./DESIGN-v1.md); empirical results [FINDINGS.md](./FINDINGS.md);
-progress + open questions [STATUS.md](./STATUS.md).
+progress + open questions [STATUS.md](../../STATUS.md).
 
 ## 1. The shape
 
@@ -70,7 +70,7 @@ in §3's descriptor recipe changes — it's parked, not obsoleted.
 
 Present a HID ambient-light sensor on `/dev/uhid`; the kernel's stock `hid-sensor-hub` +
 `hid-sensor-als` turn it into a real `/sys/bus/iio` illuminance device. Reference implementation:
-[`scripts/uhid_als_spike.py`](./scripts/uhid_als_spike.py). The descriptor details that actually
+[`scripts/uhid_als_spike.py`](../../python/scripts/retina/uhid_als_spike.py). The descriptor details that actually
 matter (each cost an iteration to find):
 
 - **Single `Collection(Physical)` carrying the ALS usage** (`0x200041`). Wrapping it in an
@@ -113,7 +113,7 @@ naive mean; subtract the studio-range black level (Y=16). Then map luma→**a pl
 
 Crucially, **gsd-power + gnome-shell own the response curve and smoothing**, so iris does *not* build
 a brightness curve, dead-band, or transition logic — it only needs a sane, monotonic mapping. The
-downstream math is now fully decoded — see **[BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md)**. The two
+downstream math is now fully decoded — see **[BRIGHTNESS-MATH.md](../iris/BRIGHTNESS-MATH.md)**. The two
 load-bearing facts: gsd's law is **self-normalizing and linear** (`brightness ∝ L/Lanchor`, capped at
 `L = 1.5·Lanchor`), so **only ratios matter — absolute "lux" is meaningless**; and because it is
 linear with a tight cap, a *linear-in-luminance* signal gives a uselessly narrow window — iris should
@@ -152,7 +152,7 @@ consideration (§STATUS, BRIGHTNESS-MATH §3).
   device. The user enables GNOME's "Automatic Brightness" toggle once (it appears when a sensor exists).
 - **Clean-release lifecycle (defused 2026-07-03; keep the polite path).** gsd only leaves auto mode on
   a `ReleaseLight` issued *while the sensor is still present* (see
-  [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md) §5) — so iris's shutdown should still trigger that release
+  [BRIGHTNESS-MATH.md](../iris/BRIGHTNESS-MATH.md) §5) — so iris's shutdown should still trigger that release
   **before** the uhid device vanishes. But the failure is no longer catastrophic: any session process
   can send `SetAutoBrightnessTarget(-1)` directly to clear stuck auto mode (validated live;
   BRIGHTNESS-MATH §6) — put it in the unit's `ExecStopPost=`. Logout is safe (session-inactive
@@ -184,5 +184,5 @@ treatment is the strongest prior art for the screen-feedback open question (STAT
   `drivers/iio/common/hid-sensors/hid-sensor-attributes.c`.
 - `iio-sensor-proxy` (`net.hadess.SensorProxy`): https://gitlab.freedesktop.org/hadess/iio-sensor-proxy
 - `hid-tools` (uhid plumbing used by the spike): https://gitlab.freedesktop.org/libevdev/hid-tools
-- Downstream brightness arithmetic (gsd-power + gnome-shell), decoded from source: [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md).
+- Downstream brightness arithmetic (gsd-power + gnome-shell), decoded from source: [BRIGHTNESS-MATH.md](../iris/BRIGHTNESS-MATH.md).
   gsd-power `plugins/power/gsd-power-manager.c` (`iio_proxy_changed`); gnome-shell `js/misc/brightnessManager.js` (`_sync`).

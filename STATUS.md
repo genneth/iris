@@ -4,7 +4,7 @@ _Updated 2026-07-04. Reflex (phone-ALS, direct sink) built end-to-end; webcam MV
 
 ## ✅ Done
 
-- **v1 sensing experiments** (host-side Python + `linuxpy` + numpy; see [FINDINGS.md](./FINDINGS.md)):
+- **v1 sensing experiments** (host-side Python + `linuxpy` + numpy; see [FINDINGS.md](./docs/retina/FINDINGS.md)):
   - Hardware confirmed (RGB `/dev/video0` YUYV; IR `/dev/video2` GREY); camera opens via the
     session `uaccess` ACL — no root, no `video` group.
   - The "read auto-exposure/gain metadata" strategy is **dead** on this camera → the usable signal
@@ -18,7 +18,7 @@ _Updated 2026-07-04. Reflex (phone-ALS, direct sink) built end-to-end; webcam MV
 - **uhid virtual ALS: VALIDATED END-TO-END.** `scripts/uhid_als_spike.py` presents a virtual HID
   ambient-light sensor; `monitor-sensor` reports our exact pushed lux through
   `iio-sensor-proxy`/`net.hadess.SensorProxy`. The hard part (the HID descriptor) is solved — recipe
-  in [DESIGN.md](./DESIGN.md) §3.
+  in [DESIGN.md](./docs/retina/DESIGN.md) §3.
 - **Operational profile measured:** ~10 ms CPU/sample, ~0.6 s capture window, luma stable on the
   first frame under manual exposure; target cadence 5–15 s; open/close per sample.
 - **Repo structure + dev gates in place:** `python/` (uv, MVP) + `rust/` (cargo, deployment stub)
@@ -40,7 +40,7 @@ _Updated 2026-07-04. Reflex (phone-ALS, direct sink) built end-to-end; webcam MV
   toggling `ambient-enabled` — to make gsd-power claim the freshly-appeared sensor.) Caveat: the
   swing was only ~36–60% (placeholder lux mapping squeezed through gsd's curve) → calibration next.
 
-- **Whole downstream stack decoded from source (2026-06-25)** → [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md).
+- **Whole downstream stack decoded from source (2026-06-25)** → [BRIGHTNESS-MATH.md](./docs/iris/BRIGHTNESS-MATH.md).
   gsd-power: self-normalizing **linear** law, `brightness ∝ L/Lanchor` capped at `L=1.5·Lanchor`,
   EMA **τ ≈ 1.6 s** (not ~10 s), re-anchors on startup / idle-dim / any user brightness change.
   gnome-shell: auto target `T` and the manual slider `S` **combine** as `clamp(T + S − 0.5, 0, 1)`,
@@ -51,7 +51,7 @@ _Updated 2026-07-04. Reflex (phone-ALS, direct sink) built end-to-end; webcam MV
   compressive/log-like signal**, not linear-in-luminance.
 
 - **Pixel reduction + dynamic range probed & decided (2026-06-25)** — `scripts/probe_pixels.py`,
-  results in [FINDINGS.md](./FINDINGS.md). Reduction = **`logmean`** (log-average / geometric-mean
+  results in [FINDINGS.md](./docs/retina/FINDINGS.md). Reduction = **`logmean`** (log-average / geometric-mean
   luma): robust to bright spots and already the log-compressed signal gsd wants. Exposure brackets
   (dim room well-exposed at exp 5000–10000; flashlight at 500–1000, clips ≥2000) prove **a single
   fixed exposure can't span dark→bright → auto-ranging is required.**
@@ -70,7 +70,7 @@ _Updated 2026-07-04. Reflex (phone-ALS, direct sink) built end-to-end; webcam MV
   `/sys/class/backlight` is decoupled and external writes don't stick. Found the **auto-mode lifecycle
   footgun** — a sensor vanishing (vs a clean `ReleaseLight`) leaves gnome-shell stuck in auto mode,
   bricking manual brightness. Rehearsed the fix (claim a live sensor → disable ambient → clean release
-  → `-1`). Detail in [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md) §5.
+  → `-1`). Detail in [BRIGHTNESS-MATH.md](./docs/iris/BRIGHTNESS-MATH.md) §5.
 
 - **Design review + live brightness-stack session (2026-07-03).** Full-project review plus a live
   incident investigation. Key outcomes (detail: FINDINGS 2026-07-03, BRIGHTNESS-MATH §6):
@@ -184,8 +184,16 @@ _Updated 2026-07-04. Reflex (phone-ALS, direct sink) built end-to-end; webcam MV
   `uhid_als_spike.py` recipe (DESIGN §3) stay in the tree, unused by the new entry point, in case the
   uhid variant is revisited. Live on-device validation against the phone is tracked separately
   (README "Run Reflex").
-- **Final language.** Python is validated and fine on footprint (~30–50 MB). Revisit Rust (~5 MB)
-  only if a resident daemon's footprint becomes a concern.
+- **Rewrite iris in Rust? (later, not clearly necessary).** iris is now a *resident* daemon
+  (`python -m iris`), and a Python daemon is aesthetically unsatisfying even where it's functionally
+  fine — footprint ~30–50 MB vs a ~5 MB static-musl binary, plus a venv/interpreter to manage. It is
+  **not obviously worth it**: the deps are tiny (`bleak` + `dbus-fast`), the logic is ~600 lines, and
+  `uv` makes the Python deployable cleanly (see `docs/iris/PACKAGING.md`). The real pull is the
+  **packaging synergy** — a single static binary is the cleanest possible artifact to hand almon (drop
+  in `~/.local/bin` + a unit, no interpreter). Port target: the pure core (`curve`/`config`/`controller`)
+  is trivial; the work is the BLE scan (`btleplug`) and the D-Bus sink (`zbus`), both of which build in
+  the `dev` toolbox. Park until footprint or packaging cleanliness actually bites; the `rust/` crate is
+  the stub. (The retina/uhid path, if ever revived, is the harder Rust port — HID descriptor + uhid.)
 - **Daylight dynamic range.** Confirm the lux scale spans real bright conditions (pending a daylight test).
 - **Multi-monitor / external displays.** Out of scope for now (internal panel only).
 

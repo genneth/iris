@@ -5,7 +5,7 @@
 >
 > **Note:** the *sensing* findings below still hold. The *sink* discussion (how to apply the
 > result) is superseded — the design later pivoted from writing brightness to presenting a
-> virtual ambient-light sensor and letting GNOME drive. See [DESIGN.md](./DESIGN.md) / [STATUS.md](./STATUS.md).
+> virtual ambient-light sensor and letting GNOME drive. See [DESIGN.md](./DESIGN.md) / [STATUS.md](../../STATUS.md).
 
 ## TL;DR
 
@@ -122,7 +122,7 @@ cascades further than just the output:
 ## Pixel reduction & dynamic range (2026-06-25, `scripts/probe_pixels.py`)
 
 > Extends/supersedes the v1 "Calibration" section above on two points: the downstream EMA is
-> **τ ≈ 1.6 s**, not ~10 s (decoded in [BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md)), and a single fixed
+> **τ ≈ 1.6 s**, not ~10 s (decoded in [BRIGHTNESS-MATH.md](../iris/BRIGHTNESS-MATH.md)), and a single fixed
 > exposure is **not** sufficient — auto-ranging is required.
 
 **Exposure brackets** (320×180, gain 64; `exposure_absolute` is in **100 µs units**, so high exposure
@@ -177,7 +177,7 @@ is *decoupled* (saw sysfs 243 while mutter 43) and external writes don't stick. 
 external way to set screen brightness outside the desktop's own controls. Plus the **auto-mode
 lifecycle footgun**: a sensor vanishing without a clean `ReleaseLight` leaves gnome-shell stuck in auto
 mode, bricking manual brightness. Full mechanism + the rehearsed clean-release fix in
-[BRIGHTNESS-MATH.md](./BRIGHTNESS-MATH.md) §5.
+[BRIGHTNESS-MATH.md](../iris/BRIGHTNESS-MATH.md) §5.
 *(2026-07-03 caveats: some of these decoupling observations may have been recorded while mutter was
 mis-bound to the phantom `nvidia_0` backlight — the tell wasn't known yet; re-check before load-bearing
 use (the Tier-1 conclusion stands via other paths). And the footgun is now **defused**: any session

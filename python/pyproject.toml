@@ -12,8 +12,10 @@ dependencies = [
     "pillow>=12.2.0",
 ]
 
-# No console-script entry point yet — src/iris is a stub; the validated experiments
-# live in scripts/ and run via `uv run python scripts/<x>.py`.
+# `iris` runs the brightness daemon (same as `python -m iris`); enables
+# `uv tool install` / `uvx` — see docs/iris/PACKAGING.md.
+[project.scripts]
+iris = "iris.daemon:run"
 
 [dependency-groups]
 dev = [

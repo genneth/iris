@@ -11,4 +11,4 @@ small static binary deployed as a `systemd --user` service.
 `cargo fmt`, `cargo clippy`, and `cargo check` run fine **on the host** (no linking step), so the
 commit-time gates work everywhere. `cargo build` needs a C linker driver, which the immutable host
 lacks — build the actual binary inside the `dev` toolbox (`toolbox run -c dev cargo build`), as a
-static-musl artifact. See [`../DESIGN.md`](../DESIGN.md) §7.
+static-musl artifact. See [`../DESIGN.md`](../docs/retina/DESIGN.md) §7.
