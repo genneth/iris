@@ -15,17 +15,17 @@ py() { (cd python && uv run "$@"); }
 case "${1:-check}" in
   check)
     py ruff format --check .
-    py ruff check src tests
+    py ruff check iris.py src tests
     py mypy
     py pytest
     "$0" rust-check
     ;;
   fmt)
     py ruff format .
-    py ruff check --fix src tests
+    py ruff check --fix iris.py src tests
     (cd rust && cargo fmt)
     ;;
-  lint)       py ruff check src tests ;;
+  lint)       py ruff check iris.py src tests ;;
   typecheck)  py mypy ;;
   test)       py pytest ;;
   rust-check)

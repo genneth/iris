@@ -173,8 +173,8 @@ _Updated 2026-07-04. Reflex (phone-ALS, direct sink) built end-to-end; webcam MV
   screen-off streaming works on the Find N6 given ColorOS "Allow background activity"; TX low +
   default RSSI gate ship as-is).
 - **Sink decided and Reflex built (2026-07-04) — resolves Next №1.** Direct sink chosen: iris now
-  ships as **Reflex**, an async daemon (`python/src/iris/{config,curve,controller,shell_brightness,
-  daemon}.py`, spec `docs/superpowers/specs/2026-07-04-reflex-phone-als-brightness-design.md`) that
+  ships as **Reflex**, an async daemon (a single self-contained PEP 723 file `python/iris.py`; spec
+  `docs/superpowers/specs/2026-07-04-reflex-phone-als-brightness-design.md`) that
   reads Pupil's BTHome lux over BLE, maps it through an absolute log-lux curve, eases toward the
   target, and drives `org.gnome.Shell.Brightness.SetAutoBrightnessTarget` directly — no uhid, no
   root, no camera. Freshness (`iris.pupil.PupilTracker`) gates DRIVING vs RELEASED; dropout releases
@@ -185,7 +185,7 @@ _Updated 2026-07-04. Reflex (phone-ALS, direct sink) built end-to-end; webcam MV
   uhid variant is revisited. Live on-device validation against the phone is tracked separately
   (README "Run Reflex").
 - **Rewrite iris in Rust? (later, not clearly necessary).** iris is now a *resident* daemon
-  (`python -m iris`), and a Python daemon is aesthetically unsatisfying even where it's functionally
+  (`uv run --script python/iris.py`), and a Python daemon is aesthetically unsatisfying even where it's functionally
   fine — footprint ~30–50 MB vs a ~5 MB static-musl binary, plus a venv/interpreter to manage. It is
   **not obviously worth it**: the deps are tiny (`bleak` + `dbus-fast`), the logic is ~600 lines, and
   `uv` makes the Python deployable cleanly (see `docs/iris/PACKAGING.md`). The real pull is the

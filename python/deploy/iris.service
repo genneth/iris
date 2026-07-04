@@ -5,8 +5,10 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-# Adjust the path to the checkout if it moves; uv keeps the venv at python/.venv.
-ExecStart=%h/iris/python/.venv/bin/python -m iris
+# iris is a single self-contained PEP 723 script; `uv run --script` resolves its two
+# deps (bleak, dbus-fast) into an isolated, cached env — no venv, no install step.
+# Adjust the path if the checkout moves; assumes `uv` is on the user PATH.
+ExecStart=/usr/bin/env uv run --script %h/iris/python/iris.py
 # Belt-and-braces: hand brightness back to manual even on a hard stop/crash.
 ExecStopPost=/usr/bin/gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell/Brightness --method org.gnome.Shell.Brightness.SetAutoBrightnessTarget -- -1.0
 Restart=on-failure

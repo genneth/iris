@@ -5,7 +5,7 @@ The async dbus-fast calls are covered by the on-device live test, not here.
 
 from pathlib import Path
 
-from iris.shell_brightness import (
+from iris import (
     is_backlight_wedged,
     read_backlight_max_sysfs,
     read_backlight_sysfs,

@@ -1,6 +1,6 @@
-"""Smoke tests. Replace/extend with real sense→lux tests as src/iris grows
-(the brightness-estimate math is pure and the natural first thing to TDD)."""
+"""Smoke test: the single-file iris daemon imports cleanly (deps present, no syntax
+errors). The pure functions are exercised in test_curve/config/controller/pupil."""
 
 
-def test_package_importable() -> None:
+def test_iris_module_importable() -> None:
     import iris  # noqa: F401

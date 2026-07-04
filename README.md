@@ -9,8 +9,8 @@ auto-brightness sink. Brightness only (no colour temperature).
 
 | Component | What it is | Where |
 |---|---|---|
-| **pupil** | The aperture/sensor: an Android app that broadcasts the phone's ambient-light reading as BTHome BLE adverts, plus the receive-side decode + freshness/RSSI library. | [`android/`](./android), [`python/src/pupil/`](./python/src/pupil), [`contract/`](./contract) |
-| **iris** | The muscle that regulates light: the shipping `systemd --user` daemon. Receives pupil's lux, maps it through an absolute log-lux curve, and drives GNOME via `SetAutoBrightnessTarget`. | [`python/src/iris/`](./python/src/iris), [`python/deploy/`](./python/deploy), [`docs/iris/`](./docs/iris) |
+| **pupil** | The aperture/sensor: an Android app that broadcasts the phone's ambient-light reading as BTHome BLE adverts, plus the wire-format contract. (Its receiver — BTHome decode + freshness/RSSI tracker — lives inside `iris.py`, the sole consumer.) | [`android/`](./android), [`contract/`](./contract) |
+| **iris** | The muscle that regulates light: the shipping `systemd --user` daemon, **one self-contained PEP 723 file**. Receives pupil's lux, maps it through an absolute log-lux curve, and drives GNOME via `SetAutoBrightnessTarget`. | [`python/iris.py`](./python/iris.py), [`python/deploy/`](./python/deploy), [`docs/iris/`](./docs/iris) |
 | **retina** | The imaging surface (experimental, parked): the webcam-as-ALS path — camera → scene-brightness → virtual HID ALS so GNOME reads the webcam as a sensor. Superseded by the phone path; kept for provenance. | [`python/src/retina/`](./python/src/retina), [`docs/retina/`](./docs/retina) |
 
 **Status (2026-07-04):** **iris ships and is validated on-device** (Find N6 → laptop): the phone's
@@ -25,11 +25,13 @@ iris reads pupil's BLE lux and drives GNOME's backlight — no camera, no uhid, 
 [`docs/iris/`](./docs/iris) and `docs/superpowers/specs/2026-07-04-reflex-phone-als-brightness-design.md`
 (codename "Reflex" — the pupillary light reflex).
 
-**Foreground** (needs the phone broadcasting pupil nearby):
+**Foreground** (needs the phone broadcasting pupil nearby). iris is a single self-contained
+PEP 723 script — `uv run` resolves its two deps (`bleak`, `dbus-fast`) into a cached env, no
+install or venv needed:
 
 ```sh
-cd python && uv run python -m iris          # Ctrl-C releases to manual and exits cleanly
-IRIS_DEBUG=1 uv run python -m iris          # + per-reading lux->target and panel readout (for calibration)
+uv run --script python/iris.py              # Ctrl-C releases to manual and exits cleanly
+IRIS_DEBUG=1 uv run --script python/iris.py # + per-reading lux->target and panel readout (for calibration)
 ```
 
 **As a `systemd --user` service** (auto-starts with the graphical session):
@@ -43,8 +45,9 @@ journalctl --user -u iris -f        # follow
 systemctl --user stop iris.service  # releases to manual (-1) via ExecStopPost
 ```
 
-The unit assumes the checkout at `~/iris` with the uv venv at `python/.venv`; edit `ExecStart=` if
-elsewhere. **Installation/management of software on this machine is [almon](../almon)'s domain** — see
+The unit runs `uv run --script python/iris.py` (assumes the checkout at `~/iris` and `uv` on PATH);
+edit `ExecStart=` if elsewhere. **Installation/management of software on this machine is
+[almon](../almon)'s domain** — see
 [`docs/iris/PACKAGING.md`](./docs/iris/PACKAGING.md) for how iris intends to hand almon a clean artifact.
 
 ### Calibration
@@ -85,9 +88,9 @@ manual; keep the screen on / "Allow background activity" for continuous driving.
 
 ## Layout
 
-- **`python/`** — uv project. `src/pupil` (receive lib), `src/iris` (the daemon), `src/retina`
-  (parked camera experiment); `tests/`, `scripts/{pupil,iris,retina}/` (a sorted lab notebook),
-  `deploy/` (service unit + example config).
+- **`python/`** — `iris.py` (the single-file daemon), `src/retina/` (parked camera experiment as a
+  package), `tests/` (import `iris` / `retina` via pytest's pythonpath), `scripts/{iris,retina}/`
+  (a sorted lab notebook), `deploy/` (service unit + example config). uv manages the dev/test env.
 - **`android/`** — the pupil app (Jetpack Compose; see its own README).
 - **`contract/`** — `bthome-golden.json`, the cross-language pupil wire-format contract (android
   encoder ↔ python decoder).

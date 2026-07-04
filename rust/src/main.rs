@@ -1,8 +1,9 @@
-//! iris — webcam → virtual ambient-light sensor (deployment build).
+//! iris — phone-ALS brightness daemon (deployment build).
 //!
-//! Stub. The Python project in `../python` is the reference/MVP implementation; this crate is the
-//! eventual shrink-wrapped, low-footprint (~5 MB static) daemon. Not started — see `../STATUS.md`.
+//! Stub. `python/iris.py` is the reference implementation; this crate is the eventual
+//! shrink-wrapped, low-footprint (~5 MB static-musl) daemon: BLE scan (btleplug) -> curve ->
+//! GNOME brightness sink (zbus). Not started, not clearly necessary — see ../STATUS.md.
 
 fn main() {
-    println!("iris (rust): not yet implemented — see ../python and ../STATUS.md");
+    println!("iris (rust): not yet implemented — see ../python/iris.py and ../STATUS.md");
 }

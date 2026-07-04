@@ -2,10 +2,16 @@
 
 from pytest import approx
 
-from iris.config import ReflexConfig
-from iris.controller import ReflexController, ReflexState, SinkAction
-from iris.curve import DEFAULT_ANCHORS, BrightnessCurve
-from pupil import TrackerConfig, TrackerState
+from iris import (
+    DEFAULT_ANCHORS,
+    BrightnessCurve,
+    ReflexConfig,
+    ReflexController,
+    ReflexState,
+    SinkAction,
+    TrackerConfig,
+    TrackerState,
+)
 
 
 def _cfg() -> ReflexConfig:

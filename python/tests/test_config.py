@@ -4,8 +4,7 @@ from pathlib import Path
 
 from pytest import approx
 
-from iris.config import ReflexConfig, load_config
-from iris.curve import DEFAULT_ANCHORS
+from iris import DEFAULT_ANCHORS, ReflexConfig, load_config
 
 
 def test_defaults_when_no_file(tmp_path: Path) -> None:

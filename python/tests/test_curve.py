@@ -5,7 +5,7 @@ import math
 import pytest
 from pytest import approx
 
-from iris.curve import DEFAULT_ANCHORS, BrightnessCurve
+from iris import DEFAULT_ANCHORS, BrightnessCurve
 
 
 def _default() -> BrightnessCurve:
