@@ -154,8 +154,10 @@ async def main() -> None:
 
 
 def run() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     # IRIS_DEBUG=1 surfaces per-reading lux->target and the periodic panel readout
-    # (for calibration/diagnosis); default INFO keeps a service's journal quiet.
-    level = logging.DEBUG if os.environ.get("IRIS_DEBUG") else logging.INFO
-    logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(message)s")
+    # (for calibration/diagnosis). Scope DEBUG to the iris logger only — the root
+    # stays INFO so bleak/dbus-fast don't flood the log with BlueZ D-Bus traffic.
+    if os.environ.get("IRIS_DEBUG"):
+        log.setLevel(logging.DEBUG)
     asyncio.run(main())
