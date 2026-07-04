@@ -86,9 +86,9 @@ The unit assumes the checkout lives at `~/iris` with the uv venv at `python/.ven
 # floor for dark, ceil for bright. 100% is anchored at DIRECT SUN (~70k lx), so the
 # gentle slope keeps it dim-leaning indoors (100 lx -> 23%) and only pegs to 100% if
 # the sensor catches real sun; indoor-by-window tops out ~58-77%.
-anchors = [[18, 0.03], [70000, 1.0]]  # [lux, target] pairs, piecewise-linear in log10(lux)
+anchors = [[25, 0.03], [70000, 1.0]]  # [lux, target] pairs, piecewise-linear in log10(lux)
 floor = 0.03
-ceil = 1.0
+ceil = 1.0                            # 100 lx -> 20%, 150 -> 25%, 1000 -> 48%, only real sun -> 100%
 
 [tracker]
 min_rssi = -75.0     # admit above +5, drop below -5 (hysteresis)
