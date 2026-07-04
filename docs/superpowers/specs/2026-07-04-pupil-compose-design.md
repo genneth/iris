@@ -115,8 +115,9 @@ Package `io.github.genneth.pupil`.
   `TxPower` is an enum with an `AdvertisingSetParameters` mapping. The UI reads/writes reactively.
 - **UI → Service (Intent extras):** on Start, the ViewModel snapshots current `PupilSettings` and
   passes the four values as Intent extras to `PupilService`. The service reads primitives from the
-  Intent — no DataStore dependency, no blocking reads, one-way flow. Preserves the existing
-  "settings apply on next start" semantics (heartbeat still live-applies internally).
+  Intent — no DataStore dependency, no blocking reads, one-way flow. All four knobs now apply
+  uniformly on next service start (the Views version live-reloaded the heartbeat mid-run from
+  SharedPreferences; that special case is dropped for a consistent one-way model).
 
 ## 5. The one adaptive screen
 
