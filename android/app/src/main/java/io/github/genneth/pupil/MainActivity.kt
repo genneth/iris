@@ -47,7 +47,10 @@ class MainActivity : ComponentActivity() {
                     val ui by vm.ui.collectAsStateWithLifecycle()
                     val settings by vm.settings.collectAsStateWithLifecycle()
                     val widthClass = calculateWindowSizeClass(this).widthSizeClass
-                    val singleColumn = widthClass != WindowWidthSizeClass.Expanded
+                    // Two-pane for anything wider than a phone. The Find N6's unfolded inner
+                    // display is ~814dp (Medium, just under the 840dp Expanded line), so gating
+                    // on Expanded left it single-column; Compact (cover ~412dp) stays single.
+                    val singleColumn = widthClass == WindowWidthSizeClass.Compact
                     var showBatteryDialog by remember { mutableStateOf(false) }
 
                     val lifecycleOwner = LocalLifecycleOwner.current
