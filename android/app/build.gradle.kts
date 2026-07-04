@@ -1,6 +1,10 @@
 plugins {
     id("com.android.application")
     // AGP 9.2 built-in Kotlin drives Kotlin compilation; no org.jetbrains.kotlin.android here.
+    // The Compose compiler plugin is required whenever buildFeatures.compose is enabled
+    // (AGP 9.2 does not bundle a Compose compiler even under built-in Kotlin), but it does
+    // not require org.jetbrains.kotlin.android to be applied alongside it.
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -23,6 +27,9 @@ android {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
     }
+    buildFeatures {
+        compose = true
+    }
 }
 
 dependencies {
@@ -35,4 +42,15 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
+    implementation(composeBom)
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3:material3-window-size-class")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 }
