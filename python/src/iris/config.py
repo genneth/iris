@@ -30,7 +30,8 @@ def load_config(path: Path | None = None) -> ReflexConfig:
     path = path or DEFAULT_CONFIG_PATH
     data: dict[str, Any] = {}
     if path.exists():
-        data = tomllib.loads(path.read_text())
+        with path.open("rb") as f:
+            data = tomllib.load(f)
 
     curve_d = data.get("curve", {})
     anchors_raw = curve_d.get("anchors")

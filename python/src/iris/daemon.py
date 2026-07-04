@@ -18,7 +18,7 @@ from typing import Any
 
 from bleak import BleakScanner
 
-from .config import load_config
+from .config import DEFAULT_CONFIG_PATH, load_config
 from .controller import ReflexController, SinkAction, SinkCommand
 from .pupil import BTHOME_SERVICE_UUID, PupilTracker, TrackerState
 from .shell_brightness import (
@@ -41,7 +41,12 @@ async def _apply(sink: ShellBrightness, cmd: SinkCommand) -> None:
 
 
 async def main() -> None:
-    config = load_config()
+    log.info("loading config from %s (defaults if absent)", DEFAULT_CONFIG_PATH)
+    try:
+        config = load_config()
+    except Exception as e:
+        log.error("invalid config at %s: %s", DEFAULT_CONFIG_PATH, e)
+        raise
     tracker = PupilTracker(config.tracker, started_at=time.monotonic())
     controller = ReflexController(config, started_at=time.monotonic())
     sink = ShellBrightness()
@@ -93,12 +98,18 @@ async def main() -> None:
                             wd_ticks = 0
                             cur = read_backlight_sysfs()
                             if cur is not None and wd_prev_sysfs is not None:
+                                mx = read_backlight_max_sysfs()
                                 wedged = is_backlight_wedged(
                                     applied_delta=wd_applied - wd_prev_applied,
                                     sysfs_delta=cur - wd_prev_sysfs,
-                                    max_brightness=read_backlight_max_sysfs(),
+                                    max_brightness=mx,
                                 )
-                                if wedged and not warned_wedged:
+                                # Don't warn when the panel is legitimately pinned at the top
+                                # rail: a high manual slider bias saturates clamp(T+S-0.5), so
+                                # our target keeps easing while the hardware correctly sits at
+                                # max — not a mutter #4432 wedge.
+                                at_top_rail = mx is not None and cur >= mx
+                                if wedged and not at_top_rail and not warned_wedged:
                                     log.warning(
                                         "backlight looks wedged (mutter #4432?): target moved "
                                         "but intel_backlight didn't. A lid close/open or re-login "
