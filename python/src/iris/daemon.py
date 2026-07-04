@@ -19,9 +19,10 @@ from typing import Any
 
 from bleak import BleakScanner
 
+from pupil import BTHOME_SERVICE_UUID, PupilTracker, TrackerState
+
 from .config import DEFAULT_CONFIG_PATH, load_config
 from .controller import ReflexController, SinkAction, SinkCommand
-from .pupil import BTHOME_SERVICE_UUID, PupilTracker, TrackerState
 from .shell_brightness import (
     ShellBrightness,
     is_backlight_wedged,

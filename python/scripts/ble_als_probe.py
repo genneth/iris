@@ -19,7 +19,7 @@ from typing import Any
 
 from bleak import BleakScanner
 
-from iris.pupil import BTHOME_SERVICE_UUID, PupilTracker, TrackerConfig, TrackerState
+from pupil import BTHOME_SERVICE_UUID, PupilTracker, TrackerConfig, TrackerState
 
 
 def main() -> None:

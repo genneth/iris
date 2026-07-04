@@ -1,6 +1,6 @@
 import numpy as np
 
-from iris.brightness import brightness_to_lux, frame_brightness
+from retina.brightness import brightness_to_lux, frame_brightness
 
 
 def gray(val: int, n: int = 64) -> np.ndarray:

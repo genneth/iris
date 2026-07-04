@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pytest import approx
 
-from iris.pupil import (
+from pupil import (
     BthomeIlluminance,
     PupilTracker,
     TrackerConfig,

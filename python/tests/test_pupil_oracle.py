@@ -14,7 +14,7 @@ from bthome_ble import BTHomeBluetoothDeviceData
 from habluetooth import BluetoothServiceInfoBleak
 from pytest import approx
 
-from iris.pupil import BTHOME_SERVICE_UUID
+from pupil import BTHOME_SERVICE_UUID
 
 GOLDEN = json.loads(
     (Path(__file__).parent / ".." / ".." / "contract" / "bthome-golden.json").read_text()

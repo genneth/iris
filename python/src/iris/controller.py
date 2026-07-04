@@ -10,8 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from pupil import TrackerState
+
 from .config import ReflexConfig
-from .pupil import TrackerState
 
 
 class SinkAction(Enum):

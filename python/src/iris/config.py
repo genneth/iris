@@ -11,8 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pupil import TrackerConfig
+
 from .curve import DEFAULT_ANCHORS, BrightnessCurve
-from .pupil import TrackerConfig
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "iris" / "config.toml"
 

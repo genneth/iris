@@ -5,7 +5,7 @@ from pytest import approx
 from iris.config import ReflexConfig
 from iris.controller import ReflexController, ReflexState, SinkAction
 from iris.curve import DEFAULT_ANCHORS, BrightnessCurve
-from iris.pupil import TrackerConfig, TrackerState
+from pupil import TrackerConfig, TrackerState
 
 
 def _cfg() -> ReflexConfig:
