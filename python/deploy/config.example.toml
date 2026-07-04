@@ -1,0 +1,18 @@
+# iris (Reflex) — room-tuned brightness curve.
+# Calibrated live on-device 2026-07-04 (cloudy daytime).
+# PHYSICAL MODEL: a single straight log-lux line, clamped to caps at both ends.
+#   - floor cap (dark):  3% held below ~18 lx
+#   - ceil cap (bright): 100% reached only in DIRECT SUN (~70k lx)
+# Gentle slope 0.27/decade => dim-leaning indoors (100 lx -> 23%, matching the
+# hand-tuned preference), topping out ~58-77% at a bright indoor window; the
+# screen only pegs to 100% if the phone's sensor actually catches direct sun.
+# Anchors are collinear (one straight line + the floor-crossing point).
+#   ~18 lx -> 3%  |  100 lx -> 23%  |  1000 lx -> 50%  |  10000 lx -> 77%  |  70000 lx -> 100%
+# PROVISIONAL: retune the floor / low end tonight in real darkness. To reach
+# 100% at a less-bright level, lower the top anchor's lux (e.g. 25000).
+
+[curve]
+floor = 0.03
+ceil = 1.0
+eps = 0.5
+anchors = [[18.0, 0.03], [70000.0, 1.0]]

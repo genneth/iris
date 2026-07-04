@@ -77,12 +77,17 @@ The unit assumes the checkout lives at `~/iris` with the uv venv at `python/.ven
 `ExecStart=` in the copied unit file if yours lives elsewhere.
 
 **Calibration** — optional `~/.config/iris/config.toml` (all keys optional; see
-`iris/config.py` for the code defaults):
+`iris/config.py` for the code defaults). A worked, room-tuned example ships at
+[`python/deploy/config.example.toml`](./python/deploy/config.example.toml):
 
 ```toml
 [curve]
-anchors = [[1, 0.08], [50, 0.35], [500, 0.7], [5000, 1.0]]  # [lux, target] pairs
-floor = 0.08
+# A single straight log-lux line, clamped to caps at both ends (the "physical model"):
+# floor for dark, ceil for bright. 100% is anchored at DIRECT SUN (~70k lx), so the
+# gentle slope keeps it dim-leaning indoors (100 lx -> 23%) and only pegs to 100% if
+# the sensor catches real sun; indoor-by-window tops out ~58-77%.
+anchors = [[18, 0.03], [70000, 1.0]]  # [lux, target] pairs, piecewise-linear in log10(lux)
+floor = 0.03
 ceil = 1.0
 
 [tracker]
@@ -96,7 +101,32 @@ push_hz = 10.0        # D-Bus push rate while driving
 epsilon = 0.002       # skip a push below this |delta target|
 ```
 
-**Live-test result (spec §8 acceptance): pending on-device validation.** The daemon imports and
-typechecks cleanly (`import iris.daemon`, `./dev.sh check` green) but the engage/track/manual-bias/
-dropout/re-engage/clean-stop walk needs the phone actually broadcasting — to be run and recorded
-here by the human.
+**Calibrating to your room** — run with `IRIS_DEBUG=1 python -m iris`: it logs each phone
+reading as `recv lux=… -> curve target=…` and a periodic `panel sysfs=…% applied_target=…`.
+Keep the phone broadcasting beside the laptop, set the GNOME slider until a given light looks
+comfortable, and read the `(lux, panel%)` pair — those become your `[curve] anchors`. Collinear
+anchors in log-lux give a single straight "physical" line; add points to shape it.
+
+**Live-test result (spec §8 acceptance) — PASSED on-device (2026-07-04, Find N6 + molly, cloudy day):**
+
+- **Engage, no jump:** phone brought near → `never-seen → fresh`; panel held at the slider, then
+  eased to the curve target (no jump), confirming the 0.5-neutral engage.
+- **Tracks light:** covering the phone drove the backlight to the floor (**111 → 4/400**); light
+  raised it back. Curve mapping confirmed live from the debug readout (e.g. 131 lx → 0.37,
+  306 lx → 0.56 on the default curve).
+- **Manual bias persists (no re-anchor):** dragging the GNOME slider bottom→middle moved the panel
+  4 → 201/400 while the auto target held at 0.556 — `clamp(T + S − 0.5)` exactly as designed.
+- **Dropout → manual:** phone silent/away → `fresh → stale` at ~25 s → `SetAutoBrightnessTarget(-1)`,
+  and the manual slider took over. Re-engaged on the phone's return.
+- **Clean stop:** SIGINT/SIGTERM → `released to manual` (validated repeatedly).
+- **RSSI proximity gate (by design):** admitted at the desk (−65…−74 dBm); at the window edge (−80)
+  and beyond it drops out and reverts to manual — the low-TX gate working as intended.
+- **Watchdog:** a bottom-rail false-positive was found and fixed (suppress the `#4432?` warning when
+  the panel is legitimately pinned at a rail).
+- **Caveat (Pupil-side, not Reflex):** when the phone's screen sleeps, ColorOS pauses Pupil and the
+  feed goes `stale` → Reflex reverts to manual; keep the screen on / "Allow background activity" for
+  continuous driving.
+
+The shipped `config.example.toml` is a clamped log-lux line (physical model, floor+ceil caps),
+tuned live to one room on a cloudy day, with 100% anchored at direct sun so it stays dim-leaning
+indoors; the sub-20-lux floor is worth re-checking in true darkness.
