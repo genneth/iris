@@ -8,7 +8,7 @@ Type=simple
 # Adjust the path to the checkout if it moves; uv keeps the venv at python/.venv.
 ExecStart=%h/iris/python/.venv/bin/python -m iris
 # Belt-and-braces: hand brightness back to manual even on a hard stop/crash.
-ExecStopPost=/usr/bin/gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell/Brightness --method org.gnome.Shell.Brightness.SetAutoBrightnessTarget -1.0
+ExecStopPost=/usr/bin/gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell/Brightness --method org.gnome.Shell.Brightness.SetAutoBrightnessTarget -- -1.0
 Restart=on-failure
 RestartSec=3
 
