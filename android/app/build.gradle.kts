@@ -1,20 +1,16 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    // AGP 9.2 built-in Kotlin drives Kotlin compilation; no org.jetbrains.kotlin.android here.
 }
 
 android {
     namespace = "io.github.genneth.pupil"
-    // Stays at 35: compileSdk 36 needs the android-36 platform + a newer AGP than the
-    // pinned 8.7.3 (and Gradle bump) — a toolchain chore worth its own pass. Everything
-    // here (M3 Expressive, dynamic colour, edge-to-edge, predictive back) works at 35;
-    // targetSdk 36 only matters for Play, which this sideloaded app isn't on.
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "io.github.genneth.pupil"
         minSdk = 31
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1"
     }
@@ -22,8 +18,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 }
 
