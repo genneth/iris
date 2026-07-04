@@ -11,6 +11,7 @@ import android.bluetooth.le.AdvertisingSet
 import android.bluetooth.le.AdvertisingSetCallback
 import android.bluetooth.le.AdvertisingSetParameters
 import android.bluetooth.le.BluetoothLeAdvertiser
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.Sensor
@@ -42,9 +43,25 @@ class PupilService : Service(), SensorEventListener {
         private const val NOTIFICATION_ID = 1
         private val BTHOME_UUID: ParcelUuid =
             ParcelUuid.fromString("0000fcd2-0000-1000-8000-00805f9b34fb")
+
+        const val EXTRA_INTERVAL_MS = "interval_ms"
+        const val EXTRA_TX_LEVEL = "tx_level"
+        const val EXTRA_DEADBAND_PCT = "deadband_pct"
+        const val EXTRA_HEARTBEAT_S = "heartbeat_s"
+        private const val MIN_GAP_MS = 500L
+        private const val DEADBAND_ABS_LUX = 1f
+
+        fun startIntent(context: Context, s: PupilSettings): Intent =
+            Intent(context, PupilService::class.java)
+                .putExtra(EXTRA_INTERVAL_MS, s.intervalMs)
+                .putExtra(EXTRA_TX_LEVEL, s.txPower.advertiseLevel)
+                .putExtra(EXTRA_DEADBAND_PCT, s.deadbandPct)
+                .putExtra(EXTRA_HEARTBEAT_S, s.heartbeatS)
     }
 
-    private lateinit var config: PupilConfig
+    private var intervalUnits = 640          // 400 ms in 0.625 ms units
+    private var txPowerLevel = AdvertisingSetParameters.TX_POWER_LOW
+    private var heartbeatMs = 10_000L
     private lateinit var governor: UpdateGovernor
     private val handler = Handler(Looper.getMainLooper())
 
@@ -61,7 +78,7 @@ class PupilService : Service(), SensorEventListener {
     private val heartbeat = object : Runnable {
         override fun run() {
             sendNow() // bumps packet id even when lux is unchanged: liveness signal
-            handler.postDelayed(this, config.heartbeatMs)
+            handler.postDelayed(this, heartbeatMs)
         }
     }
 
@@ -82,7 +99,7 @@ class PupilService : Service(), SensorEventListener {
             inFlight = false
             sendQueued = false
             advertisingSet = null
-            if (PupilState.running) handler.postDelayed({ startAdvertising() }, 1000)
+            if (PupilState.state.value.running) handler.postDelayed({ startAdvertising() }, 1000)
         }
 
         override fun onAdvertisingDataSet(set: AdvertisingSet?, status: Int) {
@@ -103,7 +120,7 @@ class PupilService : Service(), SensorEventListener {
         // fast double-tap before PupilState.running is observed) must not re-acquire the
         // sensor/wakelock or re-create the advertising set: doing so previously leaked a
         // wakelock and killed the existing set with ADVERTISE_FAILED_ALREADY_STARTED.
-        if (PupilState.running) return START_STICKY
+        if (PupilState.state.value.running) return START_STICKY
         if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_ADVERTISE)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -116,14 +133,19 @@ class PupilService : Service(), SensorEventListener {
             stopSelf()
             return START_NOT_STICKY
         }
-        config = PupilConfig(this)
-        governor = UpdateGovernor(config.minGapMs, config.deadbandFraction, config.deadbandAbsLux)
+        val intervalMs = intent?.getIntExtra(EXTRA_INTERVAL_MS, 400) ?: 400
+        intervalUnits = (intervalMs * 1000) / 625
+        txPowerLevel = intent?.getIntExtra(EXTRA_TX_LEVEL, AdvertisingSetParameters.TX_POWER_LOW)
+            ?: AdvertisingSetParameters.TX_POWER_LOW
+        heartbeatMs = ((intent?.getIntExtra(EXTRA_HEARTBEAT_S, 10) ?: 10) * 1000).toLong()
+        val deadbandFraction = (intent?.getIntExtra(EXTRA_DEADBAND_PCT, 5) ?: 5) / 100f
+        governor = UpdateGovernor(MIN_GAP_MS, deadbandFraction, DEADBAND_ABS_LUX)
         createChannel()
         startForeground(NOTIFICATION_ID, buildNotification("starting…"))
-        PupilState.running = true
+        PupilState.update { it.copy(running = true) }
         if (!acquireSensor()) return START_NOT_STICKY
         startAdvertising()
-        handler.postDelayed(heartbeat, config.heartbeatMs)
+        handler.postDelayed(heartbeat, heartbeatMs)
         return START_STICKY
     }
 
@@ -135,17 +157,19 @@ class PupilService : Service(), SensorEventListener {
         val sensor = wakeup ?: sm.getDefaultSensor(Sensor.TYPE_LIGHT)
         if (sensor == null) {
             Log.e(TAG, "no TYPE_LIGHT sensor on this device")
-            PupilState.sensorRung = "no light sensor at all?!"
+            PupilState.update { it.copy(sensorRung = "no light sensor at all?!") }
             stopSelf()
             return false
         }
         if (wakeup != null) {
-            PupilState.sensorRung = "rung 1: wakeup ALS (${sensor.name}), no wakelock"
+            PupilState.update { it.copy(sensorRung = "rung 1: wakeup ALS (${sensor.name}), no wakelock") }
         } else {
             val pm = getSystemService(POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pupil:sensor")
                 .apply { acquire() }
-            PupilState.sensorRung = "rung 2: non-wakeup ALS (${sensor.name}) + partial wakelock"
+            PupilState.update {
+                it.copy(sensorRung = "rung 2: non-wakeup ALS (${sensor.name}) + partial wakelock")
+            }
         }
         sm.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
         return true
@@ -165,8 +189,8 @@ class PupilService : Service(), SensorEventListener {
             .setLegacyMode(true)
             .setConnectable(false)
             .setScannable(false)
-            .setInterval(config.intervalUnits)
-            .setTxPowerLevel(config.txPowerLevel)
+            .setInterval(intervalUnits)
+            .setTxPowerLevel(txPowerLevel)
             .build()
         try {
             adv.startAdvertisingSet(params, buildAdvertiseData(), null, null, null, setCallback)
@@ -178,7 +202,7 @@ class PupilService : Service(), SensorEventListener {
 
     private fun buildAdvertiseData(): AdvertiseData {
         packetId = (packetId + 1) and 0xFF
-        PupilState.packetId = packetId
+        PupilState.update { it.copy(packetId = packetId) }
         return AdvertiseData.Builder()
             .setIncludeDeviceName(false) // would leak the phone's BT name, and costs bytes
             .setIncludeTxPowerLevel(false)
@@ -188,7 +212,7 @@ class PupilService : Service(), SensorEventListener {
 
     override fun onSensorChanged(event: SensorEvent) {
         latestLux = event.values[0]
-        PupilState.lastLux = latestLux
+        PupilState.update { it.copy(lux = latestLux) }
         if (governor.significantChange(latestLux)) maybeSend()
     }
 
@@ -259,8 +283,7 @@ class PupilService : Service(), SensorEventListener {
 
     @SuppressLint("MissingPermission")
     override fun onDestroy() {
-        PupilState.running = false
-        PupilState.sensorRung = "not started"
+        PupilState.update { it.copy(running = false, sensorRung = "not started") }
         handler.removeCallbacksAndMessages(null)
         sensorManager?.unregisterListener(this)
         wakeLock?.release()

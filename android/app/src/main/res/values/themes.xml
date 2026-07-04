@@ -1,13 +1,5 @@
 <resources>
-    <!-- Material 3 Expressive (MDC 1.14). NoActionBar: the layout carries its own
-         title, and the action bar mis-stacks under enforced edge-to-edge (targetSdk 35+). -->
-    <style name="Theme.Pupil" parent="Theme.Material3Expressive.DayNight.NoActionBar">
-        <item name="preferenceTheme">@style/PreferenceThemeOverlay</item>
-    </style>
-
-    <!-- M3 has no monospace type role; the sensor-report block wants fixed-width digits. -->
-    <style name="TextAppearance.Pupil.Mono" parent="TextAppearance.Material3.BodySmall">
-        <item name="android:fontFamily">monospace</item>
-        <item name="fontFamily">monospace</item>
+    <style name="Theme.Pupil" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/pupil_navy</item>
     </style>
 </resources>
