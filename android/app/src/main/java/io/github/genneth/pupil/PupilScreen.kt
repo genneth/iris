@@ -30,6 +30,8 @@ fun PupilScreen(
     ui: PupilUiState,
     settings: PupilSettings,
     singleColumn: Boolean,
+    sensorReport: String,
+    batteryExempt: Boolean,
     onToggle: () -> Unit,
     onBattery: () -> Unit,
     onInterval: (Int) -> Unit,
@@ -39,7 +41,10 @@ fun PupilScreen(
 ) {
     val readout: @Composable () -> Unit = { Readout(ui, onToggle) }
     val controls: @Composable () -> Unit = {
-        Controls(settings, onBattery, onInterval, onTxPower, onDeadband, onHeartbeat, ui.sensorRung)
+        Controls(
+            settings, onBattery, onInterval, onTxPower, onDeadband, onHeartbeat,
+            ui.sensorRung, sensorReport, batteryExempt,
+        )
     }
     if (singleColumn) {
         Column(
@@ -85,6 +90,8 @@ private fun Controls(
     onDeadband: (Int) -> Unit,
     onHeartbeat: (Int) -> Unit,
     sensorRung: String,
+    sensorReport: String,
+    batteryExempt: Boolean,
 ) {
     Setting("Advertising interval", "${settings.intervalMs} ms",
         listOf(100 to "100 ms", 250 to "250 ms", 400 to "400 ms", 1000 to "1 s"), onInterval)
@@ -96,8 +103,10 @@ private fun Controls(
         listOf(5 to "5 s", 10 to "10 s", 30 to "30 s (needs receiver --stale-after ≥75)",
             60 to "60 s (needs receiver --stale-after ≥150)"), onHeartbeat)
     FilledTonalButton(onClick = onBattery, modifier = Modifier.fillMaxWidth()) {
-        Text("Battery exemption…")
+        Text(if (batteryExempt) "Battery: exempt ✓" else "Battery exemption…")
     }
+    Text(sensorReport, style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
     Text(sensorReportLabel(sensorRung), style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

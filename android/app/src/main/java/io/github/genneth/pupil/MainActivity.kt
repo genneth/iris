@@ -19,10 +19,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 class MainActivity : ComponentActivity() {
@@ -46,15 +50,24 @@ class MainActivity : ComponentActivity() {
                     val singleColumn = widthClass != WindowWidthSizeClass.Expanded
                     var showBatteryDialog by remember { mutableStateOf(false) }
 
+                    val lifecycleOwner = LocalLifecycleOwner.current
+                    var batteryExempt by remember { mutableStateOf(isBatteryExempt()) }
+                    DisposableEffect(lifecycleOwner) {
+                        val obs = LifecycleEventObserver { _, event ->
+                            if (event == Lifecycle.Event.ON_RESUME) batteryExempt = isBatteryExempt()
+                        }
+                        lifecycleOwner.lifecycle.addObserver(obs)
+                        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+                    }
+
                     PupilScreen(
                         ui = ui,
                         settings = settings,
                         singleColumn = singleColumn,
+                        sensorReport = vm.sensorReport,
+                        batteryExempt = batteryExempt,
                         onToggle = { if (ui.running) vm.stop() else ensurePermsThenStart() },
-                        onBattery = {
-                            val pm = getSystemService(POWER_SERVICE) as PowerManager
-                            if (!pm.isIgnoringBatteryOptimizations(packageName)) showBatteryDialog = true
-                        },
+                        onBattery = { if (!batteryExempt) showBatteryDialog = true },
                         onInterval = vm::setIntervalMs,
                         onTxPower = vm::setTxPower,
                         onDeadband = vm::setDeadbandPct,
@@ -90,6 +103,9 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun isBatteryExempt(): Boolean =
+        (getSystemService(POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName)
 
     private fun ensurePermsThenStart() {
         val wanted = arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.POST_NOTIFICATIONS)
