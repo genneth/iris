@@ -5,6 +5,7 @@ description = "Use the laptop webcam as a virtual ambient-light sensor so GNOME 
 requires-python = ">=3.13"
 dependencies = [
     "bleak>=0.23",
+    "dbus-fast>=2.24",
     "hid-tools>=0.12",
     "linuxpy>=0.16",
     "numpy>=2.1",
@@ -46,7 +47,7 @@ strict = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["linuxpy.*", "hidtools.*"]
+module = ["linuxpy.*", "hidtools.*", "bleak.*", "dbus_fast.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
