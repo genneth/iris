@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 import time
 from typing import Any
@@ -66,6 +67,12 @@ async def main() -> None:
         reading = tracker.on_pupil_advert(bytes(payload), rssi=float(adv.rssi), now=now)
         if reading is not None and reading.accepted:
             controller.set_lux(reading.lux)
+            log.debug(
+                "recv lux=%.1f rssi=%.0f -> curve target=%.3f",
+                reading.lux,
+                reading.rssi,
+                config.curve.target(reading.lux),
+            )
 
     tick = 1.0 / config.push_hz
     last_state = TrackerState.NEVER_SEEN
@@ -99,17 +106,27 @@ async def main() -> None:
                             cur = read_backlight_sysfs()
                             if cur is not None and wd_prev_sysfs is not None:
                                 mx = read_backlight_max_sysfs()
+                                frac = cur / mx if mx else 0.0
+                                log.debug(
+                                    "panel sysfs=%d/%s (%.0f%%) applied_target=%.3f",
+                                    cur,
+                                    mx,
+                                    100.0 * frac,
+                                    wd_applied,
+                                )
                                 wedged = is_backlight_wedged(
                                     applied_delta=wd_applied - wd_prev_applied,
                                     sysfs_delta=cur - wd_prev_sysfs,
                                     max_brightness=mx,
                                 )
-                                # Don't warn when the panel is legitimately pinned at the top
-                                # rail: a high manual slider bias saturates clamp(T+S-0.5), so
-                                # our target keeps easing while the hardware correctly sits at
-                                # max — not a mutter #4432 wedge.
-                                at_top_rail = mx is not None and cur >= mx
-                                if wedged and not at_top_rail and not warned_wedged:
+                                # Don't warn when the panel is legitimately pinned at a rail:
+                                # clamp(T+S-0.5) saturates under a strong manual slider bias (or
+                                # a dark/bright extreme), so our target keeps easing while the
+                                # hardware correctly sits at min/max — not a mutter #4432 wedge.
+                                # (No min_brightness sysfs node exists; the observed floor is ~4,
+                                # so gate on fraction near either rail.)
+                                at_rail = mx is not None and (frac <= 0.02 or frac >= 0.98)
+                                if wedged and not at_rail and not warned_wedged:
                                     log.warning(
                                         "backlight looks wedged (mutter #4432?): target moved "
                                         "but intel_backlight didn't. A lid close/open or re-login "
@@ -137,5 +154,8 @@ async def main() -> None:
 
 
 def run() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # IRIS_DEBUG=1 surfaces per-reading lux->target and the periodic panel readout
+    # (for calibration/diagnosis); default INFO keeps a service's journal quiet.
+    level = logging.DEBUG if os.environ.get("IRIS_DEBUG") else logging.INFO
+    logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(message)s")
     asyncio.run(main())
