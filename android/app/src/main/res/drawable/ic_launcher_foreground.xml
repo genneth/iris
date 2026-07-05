@@ -1,9 +1,8 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- iris: Bluetooth-blue disc with a thin rim (adaptive-icon safe zone is r=33) -->
-    <path android:pathData="M54,54m-30,0a30,30 0 1,0 60,0a30,30 0 1,0 -60,0"
-        android:fillColor="@color/bluetooth_blue" />
+    <!-- iris: the blue fill lives in the adaptive-icon background layer (full bleed);
+         here only the thin rim marks the iris circle (safe zone is r=33) -->
     <path android:pathData="M54,54m-30,0a30,30 0 1,0 60,0a30,30 0 1,0 -60,0"
         android:strokeColor="#FFFFFF" android:strokeWidth="2" android:fillColor="#00000000" />
     <!-- pupil: black disc at the centre of the iris -->
