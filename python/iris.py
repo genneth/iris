@@ -503,11 +503,33 @@ async def main() -> None:
     try:
         while not stop.is_set():
             try:
-                async with BleakScanner(on_advert):
+                async with BleakScanner(on_advert, service_uuids=[BTHOME_SERVICE_UUID]):
                     while not stop.is_set():
                         await asyncio.sleep(tick)
                         now = time.monotonic()
                         state = tracker.state(now)
+                        if state is TrackerState.SCANNER_DEAD:
+                            scanner_is_actually_dead = True
+                            try:
+                                from bleak.backends.bluezdbus.manager import (
+                                    get_global_bluez_manager,
+                                )
+
+                                manager = await get_global_bluez_manager()
+                                for _, interfaces in manager._properties.items():
+                                    if "org.bluez.Adapter1" in interfaces:
+                                        adapter = interfaces["org.bluez.Adapter1"]
+                                        if adapter.get("Powered") and adapter.get("Discovering"):
+                                            scanner_is_actually_dead = False
+                                            break
+                            except Exception:
+                                pass
+
+                            if scanner_is_actually_dead:
+                                break
+                            else:
+                                state = TrackerState.STALE
+
                         if state is not last_state:
                             log.info("state: %s -> %s", last_state.value, state.value)
                             last_state = state

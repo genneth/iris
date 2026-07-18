@@ -108,20 +108,39 @@ async def run(args: argparse.Namespace) -> None:
                 f"{BTHOME_SERVICE_UUID[:8]}…"
             )
             try:
-                # Unfiltered: the client-side payload lookup above (service_data.get) is
-                # the real filter. A BlueZ-side service_uuids filter made "the BTHome
-                # device left range" indistinguishable from "the scanner itself died",
-                # because on_any_advert() never fired for other devices' adverts either —
-                # a filtered scan made SCANNER_DEAD trigger on ordinary Pupil range loss.
-                async with BleakScanner(on_advert):
+                # Filtered scan: service_uuids=[BTHOME_SERVICE_UUID] prevents BlueZ from
+                # registering other BLE devices on D-Bus, stopping WirePlumber from attempting
+                # to enumerate them as audio devices. To distinguish range loss from a truly
+                # dead adapter, we check the adapter's Powered/Discovering properties on D-Bus.
+                async with BleakScanner(on_advert, service_uuids=[BTHOME_SERVICE_UUID]):
                     while True:
                         await asyncio.sleep(1.0)
                         state = tracker.state(time.monotonic())
+                        if state is TrackerState.SCANNER_DEAD:
+                            scanner_is_actually_dead = True
+                            try:
+                                from bleak.backends.bluezdbus.manager import (
+                                    get_global_bluez_manager,
+                                )
+
+                                manager = await get_global_bluez_manager()
+                                for _, interfaces in manager._properties.items():
+                                    if "org.bluez.Adapter1" in interfaces:
+                                        adapter = interfaces["org.bluez.Adapter1"]
+                                        if adapter.get("Powered") and adapter.get("Discovering"):
+                                            scanner_is_actually_dead = False
+                                            break
+                            except Exception:
+                                pass
+
+                            if scanner_is_actually_dead:
+                                break
+                            else:
+                                state = TrackerState.STALE
+
                         if state is not last_state:
                             print(f"{_ts()}  state: {last_state.value} -> {state.value}")
                             last_state = state
-                        if state is TrackerState.SCANNER_DEAD:
-                            break
             except Exception as e:
                 # BlueZ/bleak errors (InProgress races, rfkill toggles, suspend/resume)
                 # must not kill the probe — fall through to the same recreate path as a
