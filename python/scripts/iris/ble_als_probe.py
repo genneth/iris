@@ -136,6 +136,7 @@ async def run(args: argparse.Namespace) -> None:
                             if scanner_is_actually_dead:
                                 break
                             else:
+                                tracker.reset_scanner(time.monotonic())
                                 state = TrackerState.STALE
 
                         if state is not last_state:
