@@ -501,9 +501,23 @@ async def main() -> None:
 
     log.info("iris (Reflex) starting; scanning for Pupil BTHome adverts")
     try:
+        from bleak.args.bluez import BlueZScannerArgs, OrPattern
+        from bleak.assigned_numbers import AdvertisementDataType
+
+        bluez_args = BlueZScannerArgs(
+            or_patterns=[
+                OrPattern(0, AdvertisementDataType.SERVICE_DATA_UUID16, b"\xd2\xfc"),
+                OrPattern(0, AdvertisementDataType.COMPLETE_LIST_SERVICE_UUID16, b"\xd2\xfc"),
+            ]
+        )
+
         while not stop.is_set():
             try:
-                async with BleakScanner(on_advert, service_uuids=[BTHOME_SERVICE_UUID]):
+                async with BleakScanner(
+                    on_advert,
+                    scanning_mode="passive",
+                    bluez=bluez_args,
+                ):
                     while not stop.is_set():
                         await asyncio.sleep(tick)
                         now = time.monotonic()

@@ -108,11 +108,26 @@ async def run(args: argparse.Namespace) -> None:
                 f"{BTHOME_SERVICE_UUID[:8]}…"
             )
             try:
-                # Filtered scan: service_uuids=[BTHOME_SERVICE_UUID] prevents BlueZ from
-                # registering other BLE devices on D-Bus, stopping WirePlumber from attempting
-                # to enumerate them as audio devices. To distinguish range loss from a truly
-                # dead adapter, we check the adapter's Powered/Discovering properties on D-Bus.
-                async with BleakScanner(on_advert, service_uuids=[BTHOME_SERVICE_UUID]):
+                # Passive hardware-filtered scan: service_uuids / or_patterns prevents BlueZ
+                # from registering other BLE devices on D-Bus, stopping WirePlumber from
+                # attempting to enumerate them as audio devices. To distinguish range loss
+                # from a truly dead adapter, we check the adapter's Powered/Discovering properties.
+                from bleak.args.bluez import BlueZScannerArgs, OrPattern
+                from bleak.assigned_numbers import AdvertisementDataType
+
+                bluez_args = BlueZScannerArgs(
+                    or_patterns=[
+                        OrPattern(0, AdvertisementDataType.SERVICE_DATA_UUID16, b"\xd2\xfc"),
+                        OrPattern(
+                            0, AdvertisementDataType.COMPLETE_LIST_SERVICE_UUID16, b"\xd2\xfc"
+                        ),
+                    ]
+                )
+                async with BleakScanner(
+                    on_advert,
+                    scanning_mode="passive",
+                    bluez=bluez_args,
+                ):
                     while True:
                         await asyncio.sleep(1.0)
                         state = tracker.state(time.monotonic())
