@@ -37,10 +37,14 @@ from pathlib import Path
 from typing import Any
 
 from bleak import BleakScanner
-from dbus_fast import BusType, Message, MessageType
+from dbus_fast import BusType, Message, MessageType, PropertyAccess
 from dbus_fast.aio import MessageBus
+from dbus_fast.service import ServiceInterface, dbus_method, dbus_property
 
 log = logging.getLogger("iris")
+
+d = float
+s = str
 
 
 # ─────────────────────────────── BTHome decode ───────────────────────────────
@@ -327,8 +331,11 @@ class ReflexController:
         self._applied: float | None = None
         self._last_pushed: float | None = None
         self.state = ReflexState.RELEASED
+        self.lux = 0.0
+        self.wedged = False
 
     def set_lux(self, lux: float) -> None:
+        self.lux = lux
         self._target = self._config.curve.target(lux)
 
     def step(self, tracker_state: TrackerState, now: float) -> SinkCommand:
@@ -381,6 +388,72 @@ _DEST = "org.gnome.Shell"
 _PATH = "/org/gnome/Shell/Brightness"
 _IFACE = "org.gnome.Shell.Brightness"
 _BACKLIGHT = Path("/sys/class/backlight/intel_backlight")
+
+
+class IrisInterface(ServiceInterface):
+    def __init__(self, controller: ReflexController, tracker: PupilTracker) -> None:
+        super().__init__("io.github.genneth.iris")
+        self._controller = controller
+        self._tracker = tracker
+
+    @dbus_property(access=PropertyAccess.READ)
+    def Lux(self) -> d:
+        return float(self._controller.lux)
+
+    @dbus_property(access=PropertyAccess.READ)
+    def Target(self) -> d:
+        val = self._controller._applied
+        if val is None:
+            val = self._controller._target
+        return float(val) if val is not None else 0.0
+
+    @dbus_property(access=PropertyAccess.READ)
+    def State(self) -> s:
+        import time
+
+        now = time.monotonic()
+        return self._tracker.state(now).value
+
+    @dbus_property(access=PropertyAccess.READ)
+    def Backlight(self) -> d:
+        cur = read_backlight_sysfs()
+        mx = read_backlight_max_sysfs()
+        if cur is not None and mx:
+            return float(cur) / float(mx)
+        return 0.0
+
+    @dbus_property(access=PropertyAccess.READ)
+    def Manual(self) -> d:
+        b = self.Backlight
+        t = self.Target
+        return float(b - t + 0.5)
+
+    @dbus_method()
+    def GetStatus(self) -> s:
+        import json
+        import time
+
+        now = time.monotonic()
+        val = self._controller._applied
+        if val is None:
+            val = self._controller._target
+        target = float(val) if val is not None else 0.0
+
+        cur = read_backlight_sysfs()
+        mx = read_backlight_max_sysfs()
+        backlight = float(cur) / float(mx) if (cur is not None and mx) else 0.0
+        manual = backlight - target + 0.5
+
+        return json.dumps(
+            {
+                "lux": float(self._controller.lux),
+                "target": target,
+                "state": self._tracker.state(now).value,
+                "backlight": backlight,
+                "manual": manual,
+                "wedged": bool(self._controller.wedged),
+            }
+        )
 
 
 class ShellBrightness:
@@ -468,6 +541,11 @@ async def main() -> None:
     controller = ReflexController(config, started_at=time.monotonic())
     sink = ShellBrightness()
     await sink.connect()
+
+    iris_dbus = IrisInterface(controller, tracker)
+    assert sink._bus is not None
+    sink._bus.export("/io/github/genneth/iris", iris_dbus)
+    await sink._bus.request_name("io.github.genneth.iris")
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -579,6 +657,7 @@ async def main() -> None:
                                 # (No min_brightness sysfs node exists; the observed floor is ~4,
                                 # so gate on fraction near either rail.)
                                 at_rail = mx is not None and (frac <= 0.02 or frac >= 0.98)
+                                controller.wedged = bool(wedged and not at_rail)
                                 if wedged and not at_rail and not warned_wedged:
                                     log.warning(
                                         "backlight looks wedged (mutter #4432?): target moved "
