@@ -1,3 +1,40 @@
+import java.util.Properties
+
+/**
+ * Release signing credentials, or null when this checkout has none.
+ *
+ * The signing key is the app's permanent identity: Android rejects any update whose
+ * certificate differs from the installed app, so re-keying means an uninstall. The
+ * keystore is one PKCS12 container shared with shamoji and hartley, holding a separate
+ * key pair per alias; it lives outside every repo and is backed up to Drive. See
+ * `~/almon/layers/android-signing.md`.
+ *
+ * Absent credentials are **not** an error: the build still produces
+ * `app-release-unsigned.apk`, so anyone can clone this repo and build it.
+ */
+val releaseSigning: Map<String, String>? = run {
+    fun value(key: String, env: String): String? =
+        providers.environmentVariable(env).orNull
+            ?: rootProject.file("keystore.properties")
+                .takeIf { it.isFile }
+                ?.let { file -> Properties().apply { file.inputStream().use(::load) }.getProperty(key) }
+
+    val store = value("storeFile", "PUPIL_KEYSTORE_FILE") ?: return@run null
+    val storePassword = value("storePassword", "PUPIL_KEYSTORE_PASSWORD") ?: return@run null
+    val alias = value("keyAlias", "PUPIL_KEY_ALIAS") ?: return@run null
+    val keyPassword = value("keyPassword", "PUPIL_KEY_PASSWORD") ?: return@run null
+    // A path in the properties file that does not exist is a misconfiguration worth
+    // failing on, not something to silently fall back from: it would otherwise produce
+    // an unsigned APK that looks like a successful build.
+    require(file(store).isFile) { "keystore.properties points at a missing keystore: $store" }
+    mapOf(
+        "storeFile" to store,
+        "storePassword" to storePassword,
+        "keyAlias" to alias,
+        "keyPassword" to keyPassword,
+    )
+}
+
 plugins {
     id("com.android.application")
     // AGP 9.2 built-in Kotlin drives Kotlin compilation; no org.jetbrains.kotlin.android here.
@@ -18,6 +55,36 @@ android {
         versionCode = 1
         versionName = "0.1"
     }
+
+    signingConfigs {
+        releaseSigning?.let { credentials ->
+            create("release") {
+                storeFile = file(credentials.getValue("storeFile"))
+                storePassword = credentials.getValue("storePassword")
+                keyAlias = credentials.getValue("keyAlias")
+                keyPassword = credentials.getValue("keyPassword")
+                // v3 must be switched on explicitly, and matters beyond compatibility: it
+                // carries the proof-of-rotation lineage, which has to be present in the
+                // *installed* APK for a future key change to avoid an uninstall.
+                //
+                // AGP derives the rest of the scheme set from minSdk — at minSdk >= 28 v3
+                // supersedes v2, so the built APK carries a v3 block and no v2 one. That
+                // is correct here (minSdk 31). Don't "fix" it by adding enableV2Signing:
+                // verified on a clean, config-cache-free build that it does not force a
+                // v2 block back in.
+                enableV3Signing = true
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Null when this checkout has no credentials, which leaves the release APK
+            // unsigned rather than failing the build.
+            signingConfig = signingConfigs.findByName("release")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
