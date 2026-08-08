@@ -53,10 +53,10 @@ class PupilService : Service(), SensorEventListener {
 
         fun startIntent(context: Context, s: PupilSettings): Intent =
             Intent(context, PupilService::class.java)
-                .putExtra(EXTRA_INTERVAL_MS, s.intervalMs)
+                .putExtra(EXTRA_INTERVAL_MS, s.interval.millis)
                 .putExtra(EXTRA_TX_LEVEL, s.txPower.advertiseLevel)
-                .putExtra(EXTRA_DEADBAND_PCT, s.deadbandPct)
-                .putExtra(EXTRA_HEARTBEAT_S, s.heartbeatS)
+                .putExtra(EXTRA_DEADBAND_PCT, s.deadband.percent)
+                .putExtra(EXTRA_HEARTBEAT_S, s.heartbeat.seconds)
     }
 
     private var intervalUnits = 640          // 400 ms in 0.625 ms units
@@ -69,6 +69,8 @@ class PupilService : Service(), SensorEventListener {
     private var wakeLock: PowerManager.WakeLock? = null
     private var advertiser: BluetoothLeAdvertiser? = null
     private var advertisingSet: AdvertisingSet? = null
+    private var sensorDescription = "ambient-light sensor"
+    private var stopping = false
 
     private var latestLux = 0f
     private var packetId = 0
@@ -86,10 +88,12 @@ class PupilService : Service(), SensorEventListener {
         override fun onAdvertisingSetStarted(set: AdvertisingSet?, txPower: Int, status: Int) {
             if (status == ADVERTISE_SUCCESS && set != null) {
                 advertisingSet = set
+                PupilState.update {
+                    it.copy(status = BroadcastStatus.Broadcasting(sensorDescription))
+                }
                 sendNow()
             } else {
-                Log.e(TAG, "advertising set failed to start: status=$status")
-                stopSelf()
+                fail("BLE advertising could not start (status $status).")
             }
         }
 
@@ -99,13 +103,20 @@ class PupilService : Service(), SensorEventListener {
             inFlight = false
             sendQueued = false
             advertisingSet = null
-            if (PupilState.state.value.running) handler.postDelayed({ startAdvertising() }, 1000)
+            if (!stopping && PupilState.state.value.status.isActive) {
+                PupilState.update { it.copy(status = BroadcastStatus.Starting) }
+                handler.postDelayed({ startAdvertising() }, 1000)
+            }
         }
 
         override fun onAdvertisingDataSet(set: AdvertisingSet?, status: Int) {
             // A late callback from a torn-down set must not clear the new set's in-flight state.
             if (set !== advertisingSet) return
             inFlight = false
+            if (status != ADVERTISE_SUCCESS) {
+                fail("BLE advertising stopped accepting updates (status $status).")
+                return
+            }
             if (sendQueued) {
                 sendQueued = false
                 maybeSend()
@@ -120,7 +131,7 @@ class PupilService : Service(), SensorEventListener {
         // fast double-tap before PupilState.running is observed) must not re-acquire the
         // sensor/wakelock or re-create the advertising set: doing so previously leaked a
         // wakelock and killed the existing set with ADVERTISE_FAILED_ALREADY_STARTED.
-        if (PupilState.state.value.running) return START_STICKY
+        if (PupilState.state.value.status.isActive) return START_REDELIVER_INTENT
         if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_ADVERTISE)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -129,24 +140,33 @@ class PupilService : Service(), SensorEventListener {
             // we return before startForeground() rather than calling it, because starting a
             // connectedDevice-type FGS without BLUETOOTH_ADVERTISE throws SecurityException
             // on API 34+.
-            Log.e(TAG, "BLUETOOTH_ADVERTISE not granted; refusing to start")
-            stopSelf()
+            fail("Bluetooth advertising permission is not granted.")
             return START_NOT_STICKY
         }
-        val intervalMs = intent?.getIntExtra(EXTRA_INTERVAL_MS, 400) ?: 400
-        intervalUnits = (intervalMs * 1000) / 625
-        txPowerLevel = intent?.getIntExtra(EXTRA_TX_LEVEL, AdvertisingSetParameters.TX_POWER_LOW)
-            ?: AdvertisingSetParameters.TX_POWER_LOW
-        heartbeatMs = ((intent?.getIntExtra(EXTRA_HEARTBEAT_S, 10) ?: 10) * 1000).toLong()
-        val deadbandFraction = (intent?.getIntExtra(EXTRA_DEADBAND_PCT, 5) ?: 5) / 100f
+        val settings = PupilSettings(
+            interval = AdvertInterval.fromMillis(intent?.getIntExtra(EXTRA_INTERVAL_MS, 400) ?: 400),
+            txPower = TxPower.entries.firstOrNull {
+                it.advertiseLevel == intent?.getIntExtra(
+                    EXTRA_TX_LEVEL,
+                    AdvertisingSetParameters.TX_POWER_LOW,
+                )
+            } ?: TxPower.LOW,
+            deadband = Deadband.fromPercent(intent?.getIntExtra(EXTRA_DEADBAND_PCT, 5) ?: 5),
+            heartbeat = Heartbeat.fromSeconds(intent?.getIntExtra(EXTRA_HEARTBEAT_S, 10) ?: 10),
+        )
+        intervalUnits = (settings.interval.millis * 1000) / 625
+        txPowerLevel = settings.txPower.advertiseLevel
+        heartbeatMs = settings.heartbeat.seconds * 1000L
+        val deadbandFraction = settings.deadband.percent / 100f
         governor = UpdateGovernor(MIN_GAP_MS, deadbandFraction, DEADBAND_ABS_LUX)
         createChannel()
         startForeground(NOTIFICATION_ID, buildNotification("starting…"))
-        PupilState.update { it.copy(running = true) }
+        stopping = false
+        PupilState.update { it.copy(status = BroadcastStatus.Starting) }
         if (!acquireSensor()) return START_NOT_STICKY
         startAdvertising()
         handler.postDelayed(heartbeat, heartbeatMs)
-        return START_STICKY
+        return START_REDELIVER_INTENT
     }
 
     /** Spec §4a: wakeup ALS (rung 1) if the hardware has one, else wakelock (rung 2). */
@@ -156,20 +176,16 @@ class PupilService : Service(), SensorEventListener {
         val wakeup: Sensor? = sm.getDefaultSensor(Sensor.TYPE_LIGHT, true)
         val sensor = wakeup ?: sm.getDefaultSensor(Sensor.TYPE_LIGHT)
         if (sensor == null) {
-            Log.e(TAG, "no TYPE_LIGHT sensor on this device")
-            PupilState.update { it.copy(sensorRung = "no light sensor at all?!") }
-            stopSelf()
+            fail("This device has no ambient-light sensor.")
             return false
         }
-        if (wakeup != null) {
-            PupilState.update { it.copy(sensorRung = "rung 1: wakeup ALS (${sensor.name}), no wakelock") }
+        sensorDescription = if (wakeup != null) {
+            "Wakeup ALS · ${sensor.name}"
         } else {
             val pm = getSystemService(POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pupil:sensor")
                 .apply { acquire() }
-            PupilState.update {
-                it.copy(sensorRung = "rung 2: non-wakeup ALS (${sensor.name}) + partial wakelock")
-            }
+            "Non-wakeup ALS + wakelock · ${sensor.name}"
         }
         sm.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
         return true
@@ -180,8 +196,7 @@ class PupilService : Service(), SensorEventListener {
         val bm = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
         val adv = bm.adapter?.bluetoothLeAdvertiser
         if (adv == null) {
-            Log.e(TAG, "no BLE advertiser (Bluetooth off?)")
-            stopSelf()
+            fail("Bluetooth is off or BLE advertising is unavailable.")
             return
         }
         advertiser = adv
@@ -196,7 +211,7 @@ class PupilService : Service(), SensorEventListener {
             adv.startAdvertisingSet(params, buildAdvertiseData(), null, null, null, setCallback)
         } catch (e: SecurityException) {
             Log.e(TAG, "advertise permission lost", e)
-            stopSelf()
+            fail("Bluetooth advertising permission was revoked.")
         }
     }
 
@@ -211,7 +226,12 @@ class PupilService : Service(), SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent) {
-        latestLux = event.values[0]
+        val reading = event.values[0]
+        if (!reading.isFinite() || reading < 0f) {
+            Log.w(TAG, "ignoring invalid ambient-light reading: $reading")
+            return
+        }
+        latestLux = reading
         PupilState.update { it.copy(lux = latestLux) }
         if (governor.significantChange(latestLux)) maybeSend()
     }
@@ -246,7 +266,7 @@ class PupilService : Service(), SensorEventListener {
             set.setAdvertisingData(buildAdvertiseData())
         } catch (e: SecurityException) {
             Log.e(TAG, "advertise permission lost", e)
-            stopSelf()
+            fail("Bluetooth advertising permission was revoked.")
             return
         }
         inFlight = true
@@ -283,7 +303,10 @@ class PupilService : Service(), SensorEventListener {
 
     @SuppressLint("MissingPermission")
     override fun onDestroy() {
-        PupilState.update { it.copy(running = false, sensorRung = "not started") }
+        stopping = true
+        PupilState.update { state ->
+            if (state.status is BroadcastStatus.Failed) state else state.copy(status = BroadcastStatus.Stopped)
+        }
         handler.removeCallbacksAndMessages(null)
         sensorManager?.unregisterListener(this)
         wakeLock?.release()
@@ -295,5 +318,11 @@ class PupilService : Service(), SensorEventListener {
             Log.w(TAG, "could not stop advertising set", e)
         }
         super.onDestroy()
+    }
+
+    private fun fail(message: String) {
+        Log.e(TAG, message)
+        PupilState.update { it.copy(status = BroadcastStatus.Failed(message)) }
+        stopSelf()
     }
 }

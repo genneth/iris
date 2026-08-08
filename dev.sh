@@ -2,7 +2,7 @@
 # iris dev tasks (pure bash — the immutable host has no `make`).
 #   ./dev.sh check       run all gates (what the pre-commit hook runs)
 #   ./dev.sh fmt         auto-format python + rust
-#   ./dev.sh lint | typecheck | test | rust-check
+#   ./dev.sh lint | typecheck | test | rust-check | android
 #   ./dev.sh setup       enable the tracked git hooks (core.hooksPath)
 #
 # Lint/typecheck target our own code (src, tests); the formatter runs over
@@ -34,7 +34,8 @@ case "${1:-check}" in
     ;;
   android)
     # gradle runs in the dev toolbox on the toolbox's dnf java (JDK 25); SDK at ~/Android/Sdk
-    toolbox run -c dev bash -lc "cd '$PWD/android' && ./gradlew --console=plain testDebugUnitTest"
+    toolbox run -c dev bash -lc \
+      "cd '$PWD/android' && ./gradlew --console=plain :app:testDebugUnitTest :app:lintDebug :app:validateDebugScreenshotTest"
     ;;
   setup)
     git config core.hooksPath hooks

@@ -43,8 +43,12 @@ class PupilViewModel(app: Application) : AndroidViewModel(app) {
         app.stopService(android.content.Intent(app, PupilService::class.java))
     }
 
-    fun setIntervalMs(v: Int) = viewModelScope.launch { repo.setIntervalMs(v) }
+    fun reportFailure(message: String) {
+        PupilState.update { it.copy(status = BroadcastStatus.Failed(message)) }
+    }
+
+    fun setInterval(v: AdvertInterval) = viewModelScope.launch { repo.setInterval(v) }
     fun setTxPower(v: TxPower) = viewModelScope.launch { repo.setTxPower(v) }
-    fun setDeadbandPct(v: Int) = viewModelScope.launch { repo.setDeadbandPct(v) }
-    fun setHeartbeatS(v: Int) = viewModelScope.launch { repo.setHeartbeatS(v) }
+    fun setDeadband(v: Deadband) = viewModelScope.launch { repo.setDeadband(v) }
+    fun setHeartbeat(v: Heartbeat) = viewModelScope.launch { repo.setHeartbeat(v) }
 }

@@ -16,14 +16,17 @@ private val FallbackLight = lightColorScheme(primary = BluetoothBlue)
 private val FallbackDark = darkColorScheme(primary = BluetoothBlue)
 
 @Composable
-fun PupilTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+fun PupilTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit,
+) {
     val context = LocalContext.current
-    // minSdk 31, so dynamic colour is always available; guard anyway for clarity.
-    val scheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    // Deterministic screenshot tests opt out; the real app follows the Find N6's wallpaper.
+    val scheme = if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     } else {
-        if (dark) FallbackDark else FallbackLight
+        if (darkTheme) FallbackDark else FallbackLight
     }
     MaterialTheme(colorScheme = scheme, content = content)
 }

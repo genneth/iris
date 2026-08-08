@@ -1,0 +1,261 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+android_root="$project_root/android"
+sdk_root="${ANDROID_HOME:-/var/home/genneth/Android/Sdk}"
+adb_bin="$sdk_root/platform-tools/adb"
+emulator_bin="$sdk_root/emulator/emulator"
+avdmanager_bin="$sdk_root/cmdline-tools/latest/bin/avdmanager"
+avd_home="$project_root/target/android-avd"
+avd_name="pupil_closed_loop"
+loop_output="$project_root/target/android-loop"
+emulator_unit="pupil-android-emulator.service"
+release_apk="$android_root/app/build/outputs/apk/release/app-release.apk"
+release_version_name="0.2.0"
+release_version_code="2"
+release_dist="$android_root/dist/pupil-$release_version_name-release.apk"
+release_cert_sha256="654746ec3c14cac3498052ac5cf7d7a8a02b87a85cdcd96cd9a19d938b99c6e5"
+
+run_dev() {
+    toolbox run -c dev "$@"
+}
+
+adb_all() {
+    run_dev "$adb_bin" "$@"
+}
+
+emulator_serial() {
+    local serial running_avd
+    while read -r serial; do
+        running_avd=$(adb_all -s "$serial" emu avd name 2>/dev/null | head -1 | tr -d '\r')
+        if [[ "$running_avd" == "$avd_name" ]]; then
+            echo "$serial"
+            return
+        fi
+    done < <(adb_all devices 2>/dev/null | awk '/^emulator-[0-9]+[[:space:]]+device$/ { print $1 }')
+}
+
+adb() {
+    local serial
+    serial=$(emulator_serial)
+    if [[ -z "$serial" ]]; then
+        echo 'No running Android emulator is available.' >&2
+        return 1
+    fi
+    adb_all -s "$serial" "$@"
+}
+
+ensure_avd() {
+    if [[ -f "$avd_home/$avd_name.avd/config.ini" && -f "$avd_home/$avd_name.ini" ]]; then
+        return
+    fi
+    mkdir -p "$avd_home"
+    printf 'no\n' | run_dev env ANDROID_HOME="$sdk_root" ANDROID_AVD_HOME="$avd_home" \
+        "$avdmanager_bin" create avd \
+        --force \
+        --name "$avd_name" \
+        --path "$avd_home/$avd_name.avd" \
+        --package 'system-images;android-36;google_apis;x86_64' \
+        --device pixel_7
+}
+
+emulator_running() {
+    [[ -n "$(emulator_serial)" ]]
+}
+
+start_emulator() {
+    local renderer=${1:-host}
+    ensure_avd
+    if emulator_running || systemctl --user is-active --quiet "$emulator_unit"; then
+        echo 'Android emulator is already running.'
+        return
+    fi
+
+    mkdir -p "$loop_output"
+    systemctl --user reset-failed "$emulator_unit" 2>/dev/null || true
+
+    local environment=(--setenv="ANDROID_AVD_HOME=$avd_home")
+    local graphics=(-gpu swiftshader_indirect)
+    if [[ "$renderer" == host ]]; then
+        local display xauthority wayland_display
+        display=$(systemctl --user show-environment | sed -n 's/^DISPLAY=//p' | head -1)
+        xauthority=$(systemctl --user show-environment | sed -n 's/^XAUTHORITY=//p' | head -1)
+        wayland_display=$(systemctl --user show-environment | sed -n 's/^WAYLAND_DISPLAY=//p' | head -1)
+        if [[ -z "$display" || -z "$xauthority" ]]; then
+            echo 'The graphical session did not publish DISPLAY/XAUTHORITY; use the headless renderer.' >&2
+            exit 1
+        fi
+        environment+=(
+            --setenv="DISPLAY=$display"
+            --setenv="XAUTHORITY=$xauthority"
+            --setenv="WAYLAND_DISPLAY=$wayland_display"
+            --setenv=__GLX_VENDOR_LIBRARY_NAME=nvidia
+            --setenv=__NV_PRIME_RENDER_OFFLOAD=1
+            --setenv=__VK_LAYER_NV_optimus=NVIDIA_only
+            '--setenv=VK_LOADER_DRIVERS_SELECT=*nvidia*'
+        )
+        graphics=(-gpu host)
+    elif [[ "$renderer" != software ]]; then
+        echo 'Renderer must be host or software.' >&2
+        exit 2
+    fi
+
+    systemd-run --user \
+        --unit="$emulator_unit" \
+        --collect \
+        --quiet \
+        --property="WorkingDirectory=$project_root" \
+        "${environment[@]}" \
+        "$emulator_bin" \
+        -avd "$avd_name" \
+        -no-window \
+        -no-audio \
+        -no-boot-anim \
+        "${graphics[@]}" \
+        -no-snapshot-load \
+        -no-snapshot-save
+    echo "Started $avd_name with $renderer rendering and no window."
+}
+
+wait_for_boot() {
+    for attempt in {1..90}; do
+        local state boot
+        state=$(adb get-state 2>/dev/null || true)
+        boot=$(adb shell getprop sys.boot_completed 2>/dev/null || true)
+        boot=${boot//$'\r'/}
+        if [[ "$state" == device && "$boot" == 1 ]]; then
+            echo "Android booted after at most ${attempt}s."
+            return
+        fi
+        sleep 1
+    done
+    echo "Android did not finish booting. Inspect: journalctl --user -u $emulator_unit" >&2
+    exit 1
+}
+
+install_debug_app() {
+    wait_for_boot
+    run_dev env ANDROID_HOME="$sdk_root" "$android_root/gradlew" -p "$android_root" :app:assembleDebug
+    adb install -r "$android_root/app/build/outputs/apk/debug/app-debug.apk"
+    adb shell am force-stop io.github.genneth.pupil
+    adb shell am start -W -n io.github.genneth.pupil/.MainActivity
+}
+
+verify_release_apk() {
+    if [[ ! -f "$release_apk" ]]; then
+        echo 'No signed app-release.apk was produced; configure release signing first.' >&2
+        exit 1
+    fi
+
+    local verification actual_cert debuggable application_id version_name version_code
+    verification=$(run_dev "$sdk_root/build-tools/36.0.0/apksigner" \
+        verify --verbose --print-certs "$release_apk")
+    actual_cert=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"$verification")
+    if [[ "$actual_cert" != "$release_cert_sha256" ]]; then
+        echo "Refusing APK signed by unexpected certificate: ${actual_cert:-none}" >&2
+        exit 1
+    fi
+    if ! grep -Fqx 'Verified using v3 scheme (APK Signature Scheme v3): true' <<<"$verification"; then
+        echo 'Refusing release APK without an APK Signature Scheme v3 signature.' >&2
+        exit 1
+    fi
+    if ! grep -Fqx 'Number of signers: 1' <<<"$verification"; then
+        echo 'Refusing release APK whose signer set is not exactly one key.' >&2
+        exit 1
+    fi
+
+    debuggable=$(run_dev "$sdk_root/cmdline-tools/latest/bin/apkanalyzer" manifest debuggable "$release_apk")
+    application_id=$(run_dev "$sdk_root/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$release_apk")
+    version_name=$(run_dev "$sdk_root/cmdline-tools/latest/bin/apkanalyzer" manifest version-name "$release_apk")
+    version_code=$(run_dev "$sdk_root/cmdline-tools/latest/bin/apkanalyzer" manifest version-code "$release_apk")
+    [[ "$debuggable" == false ]] || { echo 'Refusing a debuggable release APK.' >&2; exit 1; }
+    [[ "$application_id" == io.github.genneth.pupil ]] || { echo "Unexpected application id: $application_id" >&2; exit 1; }
+    [[ "$version_name" == "$release_version_name" ]] || { echo "Unexpected version name: $version_name" >&2; exit 1; }
+    [[ "$version_code" == "$release_version_code" ]] || { echo "Unexpected version code: $version_code" >&2; exit 1; }
+
+    mkdir -p "$(dirname "$release_dist")"
+    cp -- "$release_apk" "$release_dist"
+    sha256sum "$release_dist" > "$release_dist.sha256"
+    echo "Verified and exported signed, non-debuggable release: $release_dist"
+    cat "$release_dist.sha256"
+}
+
+build_release_app() {
+    # A credential-free build produces app-release-unsigned.apk. Removing the signed output first
+    # prevents an older credentialled artifact from masquerading as the result of this build.
+    rm -f -- "$release_apk" "$release_dist" "$release_dist.sha256"
+    run_dev env ANDROID_HOME="$sdk_root" "$android_root/gradlew" -p "$android_root" :app:assembleRelease
+    verify_release_apk
+}
+
+install_release_app() {
+    wait_for_boot
+    build_release_app
+    # Only the disposable emulator is selected. Never automate the physical phone's one-time
+    # debug-key migration: that uninstall and ColorOS reconfiguration require owner approval.
+    adb uninstall io.github.genneth.pupil >/dev/null 2>&1 || true
+    adb install "$release_apk"
+    adb shell am force-stop io.github.genneth.pupil
+    adb shell am start -W -n io.github.genneth.pupil/.MainActivity
+}
+
+run_ui_tests() {
+    wait_for_boot
+    local serial
+    serial=$(emulator_serial)
+    run_dev env ANDROID_HOME="$sdk_root" ANDROID_SERIAL="$serial" \
+        "$android_root/gradlew" -p "$android_root" :app:connectedDebugAndroidTest
+}
+
+capture() {
+    local name=${1:-pupil}
+    mkdir -p "$loop_output"
+    adb exec-out screencap -p > "$loop_output/$name.png"
+    adb shell uiautomator dump "/sdcard/$name.xml" >/dev/null
+    adb exec-out cat "/sdcard/$name.xml" > "$loop_output/$name.xml"
+    echo "$loop_output/$name.png"
+    echo "$loop_output/$name.xml"
+}
+
+case "${1:-}" in
+    up)
+        start_emulator "${2:-host}"
+        install_debug_app
+        adb shell dumpsys SurfaceFlinger | grep -m1 'GLES:'
+        ;;
+    start) start_emulator "${2:-host}" ;;
+    wait) wait_for_boot ;;
+    install) install_debug_app ;;
+    install-release) install_release_app ;;
+    verify-release) build_release_app ;;
+    test-ui) run_ui_tests ;;
+    capture) capture "${2:-pupil}" ;;
+    folded) adb shell wm size reset ;;
+    unfolded) adb shell wm size 2292x2528 ;;
+    renderer) adb shell dumpsys SurfaceFlinger | grep -m1 'GLES:' ;;
+    stop)
+        adb shell wm size reset 2>/dev/null || true
+        adb emu kill 2>/dev/null || true
+        systemctl --user stop "$emulator_unit" 2>/dev/null || true
+        ;;
+    *)
+        cat <<'USAGE'
+Usage: android/scripts/android-loop COMMAND
+
+  up [host|software]     start, build, install, and launch Pupil (NVIDIA host is default)
+  start [host|software]  start the project-local API 36 emulator without a window
+  wait                   wait for Android to finish booting
+  install                build, install, and launch the debug APK on the emulator
+  install-release        build, verify, replace, and launch the permanent-key release on the emulator
+  verify-release         build, verify, and export the signed 0.2.0 release
+  test-ui                run Compose interaction tests on the emulator
+  capture [name]         save a screenshot and UI hierarchy under target/android-loop
+  folded                 restore the folded-size emulator display
+  unfolded               emulate the Find N6 873dp unfolded width
+  renderer               print the renderer Android is actually using
+  stop                   reset the display and stop the emulator
+USAGE
+        exit 2
+        ;;
+esac

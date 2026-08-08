@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,7 +36,15 @@ class MainActivity : ComponentActivity() {
 
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { results -> if (results.values.all { it }) vm.start() }
+    ) { results ->
+        if (results.values.all { it }) {
+            vm.start()
+        } else {
+            vm.reportFailure(
+                "Bluetooth advertising and notifications must be allowed before Pupil can broadcast."
+            )
+        }
+    }
 
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,15 +52,20 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             PupilTheme {
-                Surface {
+                Surface(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
                     val ui by vm.ui.collectAsStateWithLifecycle()
                     val settings by vm.settings.collectAsStateWithLifecycle()
                     val widthClass = calculateWindowSizeClass(this).widthSizeClass
-                    // Two-pane for anything wider than a phone. The Find N6's unfolded inner
-                    // display is ~814dp (Medium, just under the 840dp Expanded line), so gating
-                    // on Expanded left it single-column; Compact (cover ~412dp) stays single.
-                    val singleColumn = widthClass == WindowWidthSizeClass.Compact
+                    // The Find N6 cover is Compact (~423dp), while its inner display lands in
+                    // Medium or Expanded depending on system-bar posture (~814–873dp). Treating
+                    // every non-Compact window as unfolded keeps the hinge transition stable.
+                    val layout = if (widthClass == WindowWidthSizeClass.Compact) {
+                        PupilLayout.FOLDED
+                    } else {
+                        PupilLayout.UNFOLDED
+                    }
                     var showBatteryDialog by remember { mutableStateOf(false) }
+                    var showPermissionDialog by remember { mutableStateOf(false) }
 
                     val lifecycleOwner = LocalLifecycleOwner.current
                     var batteryExempt by remember { mutableStateOf(isBatteryExempt()) }
@@ -66,16 +80,47 @@ class MainActivity : ComponentActivity() {
                     PupilScreen(
                         ui = ui,
                         settings = settings,
-                        singleColumn = singleColumn,
+                        layout = layout,
                         sensorReport = vm.sensorReport,
                         batteryExempt = batteryExempt,
-                        onToggle = { if (ui.running) vm.stop() else ensurePermsThenStart() },
+                        onToggle = {
+                            if (ui.status.isActive) {
+                                vm.stop()
+                            } else if (missingPermissions().isEmpty()) {
+                                vm.start()
+                            } else {
+                                showPermissionDialog = true
+                            }
+                        },
                         onBattery = { if (!batteryExempt) showBatteryDialog = true },
-                        onInterval = vm::setIntervalMs,
+                        onInterval = vm::setInterval,
                         onTxPower = vm::setTxPower,
-                        onDeadband = vm::setDeadbandPct,
-                        onHeartbeat = vm::setHeartbeatS,
+                        onDeadband = vm::setDeadband,
+                        onHeartbeat = vm::setHeartbeat,
                     )
+
+                    if (showPermissionDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showPermissionDialog = false },
+                            title = { Text("Let Pupil broadcast nearby?") },
+                            text = {
+                                Text(
+                                    "Pupil needs Bluetooth advertising to send lux and notification " +
+                                        "permission to keep its screen-off service visible. It never " +
+                                        "pairs, scans, or learns nearby device identities."
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    showPermissionDialog = false
+                                    permLauncher.launch(missingPermissions().toTypedArray())
+                                }) { Text("Continue") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showPermissionDialog = false }) { Text("Not now") }
+                            },
+                        )
+                    }
 
                     if (showBatteryDialog) {
                         AlertDialog(
@@ -110,11 +155,10 @@ class MainActivity : ComponentActivity() {
     private fun isBatteryExempt(): Boolean =
         (getSystemService(POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName)
 
-    private fun ensurePermsThenStart() {
+    private fun missingPermissions(): List<String> {
         val wanted = arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.POST_NOTIFICATIONS)
-        val missing = wanted.filter {
+        return wanted.filter {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missing.isEmpty()) vm.start() else permLauncher.launch(missing.toTypedArray())
     }
 }

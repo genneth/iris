@@ -5,11 +5,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
+sealed interface BroadcastStatus {
+    data object Stopped : BroadcastStatus
+    data object Starting : BroadcastStatus
+    data class Broadcasting(val sensor: String) : BroadcastStatus
+    data class Failed(val message: String) : BroadcastStatus
+}
+
+val BroadcastStatus.isActive: Boolean
+    get() = this is BroadcastStatus.Starting || this is BroadcastStatus.Broadcasting
+
 data class PupilUiState(
-    val running: Boolean = false,
+    val status: BroadcastStatus = BroadcastStatus.Stopped,
     val lux: Float? = null,
     val packetId: Int = 0,
-    val sensorRung: String = "not started",
 )
 
 /** Process-level bridge from the service to the UI. Service writes, UI collects. */

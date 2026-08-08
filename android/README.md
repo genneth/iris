@@ -19,6 +19,58 @@ Toolchain (all in the `dev` toolbox): AGP 9.2.0 / Gradle wrapper 9.6.1 / Kotlin
 `java-25-openjdk` — no `JAVA_HOME` prefix. Android SDK at `~/Android/Sdk`
 (platforms;android-36, build-tools;36.0.0). Unit tests: `./dev.sh android`.
 
+`./dev.sh android` is the local Android gate: generated/property unit tests, Android lint, and
+deterministic Compose screenshots at the Find N6's folded and unfolded dimensions. It runs in
+`dev`; the Python/Rust gate remains `./dev.sh check`.
+
+## Foldable development loop
+
+Pupil treats the Find N6's cover and inner displays as two first-class compositions: Compact
+windows use the folded single-column instrument; Medium and Expanded windows use the unfolded
+two-pane workspace. This deliberately handles the inner display reporting roughly 814–873 dp as
+system bars and posture change.
+
+The project-local loop uses a disposable API 36 AVD under `target/`, selects it by both
+`emulator-*` serial and AVD name, and can emulate both widths without touching a connected phone.
+It uses the same proven rendering path as Shamoji and Hartley: NVIDIA host rendering inside QEMU's
+`-no-window` headless binary. The emulator uses Xwayland only as its EGL bridge—this installed build
+has no native Wayland headless renderer—but Qt never creates a window, so nothing opens or flashes
+in the desktop session. `start software` retains the established SwiftShader compatibility fallback.
+
+    android/scripts/android-loop up
+    android/scripts/android-loop capture folded-ready
+    android/scripts/android-loop unfolded
+    android/scripts/android-loop capture unfolded-ready
+    android/scripts/android-loop test-ui
+    android/scripts/android-loop stop
+
+The emulator closes the build, interaction, adaptive-layout and release-shrinker loop. It cannot
+prove the real Find N6's ALS, BLE controller, Doze or ColorOS behaviour; the screen-off torch test
+below remains the hardware acceptance gate.
+
+## Release signing
+
+Official builds use Pupil's alias in Almon's shared, backed-up Android signing keystore. Local
+credentials are in the git-ignored, mode-0600 `keystore.properties`; a checkout without them still
+produces an unsigned release, but cannot produce an official APK. Pupil's permanent certificate is:
+
+    654746ec3c14cac3498052ac5cf7d7a8a02b87a85cdcd96cd9a19d938b99c6e5
+
+Build and export version 0.2.0 with:
+
+    android/scripts/android-loop verify-release
+
+The command removes any stale signed output before building, then refuses the result unless it is
+non-debuggable, version code 2, signed by exactly that certificate, and carries a v3 signature. A
+successful run exports `android/dist/pupil-0.2.0-release.apk` plus its SHA-256 file. To exercise the
+shrunk artifact on the disposable emulator, use `install-release`.
+
+The Find N6 currently has the historical debug-key build. Android cannot update it with the
+permanent key, so the first 0.2.0 phone installation requires one explicit uninstall. That loses
+Pupil's four local settings and all OS/ColorOS treatment associated with the old install: repeat the
+survival checklist below, then repeat the locked-screen torch/freshness test. The emulator loop
+never automates or targets this physical-phone migration.
+
 ## ColorOS survival checklist (do all of these once)
 
 1. In-app: tap **Battery exemption…** and allow (also keeps wakelocks honoured in Doze).
