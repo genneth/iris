@@ -12,13 +12,29 @@ loop_output="$project_root/target/android-loop"
 # it back. See ~/almon/tools/molly-android-dev/SKILL.md.
 #
 # Geometry must now be stated, never assumed. `wm size reset` used to mean
-# pupil's own 1080x2400 panel; on the shared device the physical panel is a
+# pupil's own device panel; on the shared device the physical panel is a
 # 2248x2616 superset, so a reset would silently hand Pupil a much larger screen
 # than it was ever laid out against.
+#
+# The owner has exactly one phone: a Find N6 foldable. Its real panel,
+# measured with `dumpsys display` on 2026-08-08 (see
+# ~/hartley/docs/superpowers/specs/2026-08-08-hartley-typography.md), is
+# 1140x2616 folded / 2248x2480 unfolded at density 442 (413dp / 813dp wide).
+# 1080x2400 / 2292x2528 @420 were pixel_7 AVD template leftovers, never
+# corrected, and were validating pupil's UI against a device nobody owns.
+#
+# Density is passed explicitly on every acquire below rather than left to
+# almon's per-project default in `profile_for()`. Hartley and shamoji made the
+# same call: if a value in almon's table ever drifted from what this repo's
+# layouts assume, an implicit density would drift silently along with it. An
+# explicit --density here means that drift fails loudly instead (a wrong
+# emulatorctl entry becomes visibly wrong dp math on screen, not a quiet
+# mismatch with almon's table).
 emulatorctl="${EMULATORCTL:-$HOME/.local/bin/emulatorctl}"
 lease_project=pupil
-geometry_folded=1080x2400
-geometry_unfolded=2292x2528
+geometry_folded=1140x2616
+geometry_unfolded=2248x2480
+density=442
 lease_wait="${PUPIL_EMULATOR_WAIT:-300}"
 release_apk="$android_root/app/build/outputs/apk/release/app-release.apk"
 release_version_name="0.2.0"
@@ -78,9 +94,9 @@ start_emulator() {
             exit 2 ;;
     esac
     "$emulatorctl" acquire "$lease_project" \
-        --geometry "$geometry" --wait "$lease_wait" >/dev/null \
+        --geometry "$geometry" --density "$density" --wait "$lease_wait" >/dev/null \
         || { echo "Could not lease the shared device; try: emulatorctl status" >&2; exit 1; }
-    echo "Leased almon's shared device for $lease_project at $geometry."
+    echo "Leased almon's shared device for $lease_project at $geometry@${density}dpi."
 }
 
 release_emulator() {
@@ -201,9 +217,10 @@ case "${1:-}" in
     test-ui) run_ui_tests ;;
     capture) capture "${2:-pupil}" ;;
     # Explicit, never `wm size reset`: reset now means almon's 2248x2616 superset
-    # panel, not pupil's old 1080x2400.
-    folded) adb shell wm size "$geometry_folded" ;;
-    unfolded) adb shell wm size "$geometry_unfolded" ;;
+    # panel, not the Find N6's folded 1140x2616. Density is restated too, since
+    # a bare `wm size` leaves whatever density the last command set.
+    folded) adb shell wm size "$geometry_folded"; adb shell wm density "$density" ;;
+    unfolded) adb shell wm size "$geometry_unfolded"; adb shell wm density "$density" ;;
     renderer) adb shell dumpsys SurfaceFlinger | grep -m1 'GLES:' ;;
     stop) release_emulator ;;
     *)
@@ -219,8 +236,8 @@ Usage: android/scripts/android-loop COMMAND
   verify-release         build, verify, and export the signed 0.2.0 release
   test-ui                run Compose interaction tests on the emulator
   capture [name]         save a screenshot and UI hierarchy under target/android-loop
-  folded                 restore the folded-size emulator display
-  unfolded               emulate the Find N6 873dp unfolded width
+  folded                 restore the Find N6 folded display (413dp wide)
+  unfolded               emulate the Find N6 813dp unfolded width
   renderer               print the renderer Android is actually using
   stop                   reset the display and stop the emulator
 USAGE

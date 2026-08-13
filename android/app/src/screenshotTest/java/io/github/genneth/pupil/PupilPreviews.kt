@@ -11,14 +11,14 @@ default ALS: OPLUS Fusion Light Sensor Next Gen
   fifoMax=0 isWakeUp=false"""
 
 @PreviewTest
-@Preview(name = "Find N6 folded ready", widthDp = 423, heightDp = 971, showBackground = true)
+@Preview(name = "Find N6 folded ready", widthDp = 413, heightDp = 948, showBackground = true)
 @Composable
 fun FoldedReadyPreview() {
     PreviewScreen(PupilLayout.FOLDED, PupilUiState())
 }
 
 @PreviewTest
-@Preview(name = "Find N6 folded broadcasting", widthDp = 423, heightDp = 971, showBackground = true)
+@Preview(name = "Find N6 folded broadcasting", widthDp = 413, heightDp = 948, showBackground = true)
 @Composable
 fun FoldedBroadcastingPreview() {
     PreviewScreen(
@@ -32,7 +32,7 @@ fun FoldedBroadcastingPreview() {
 }
 
 @PreviewTest
-@Preview(name = "Find N6 unfolded broadcasting", widthDp = 873, heightDp = 963, showBackground = true)
+@Preview(name = "Find N6 unfolded broadcasting", widthDp = 813, heightDp = 898, showBackground = true)
 @Composable
 fun UnfoldedBroadcastingPreview() {
     PreviewScreen(
@@ -48,8 +48,8 @@ fun UnfoldedBroadcastingPreview() {
 @PreviewTest
 @Preview(
     name = "Find N6 unfolded failure dark",
-    widthDp = 873,
-    heightDp = 963,
+    widthDp = 813,
+    heightDp = 898,
     showBackground = true,
     uiMode = Configuration.UI_MODE_NIGHT_YES,
 )

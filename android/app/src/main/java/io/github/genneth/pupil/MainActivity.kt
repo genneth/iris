@@ -56,9 +56,9 @@ class MainActivity : ComponentActivity() {
                     val ui by vm.ui.collectAsStateWithLifecycle()
                     val settings by vm.settings.collectAsStateWithLifecycle()
                     val widthClass = calculateWindowSizeClass(this).widthSizeClass
-                    // The Find N6 cover is Compact (~423dp), while its inner display lands in
-                    // Medium or Expanded depending on system-bar posture (~814–873dp). Treating
-                    // every non-Compact window as unfolded keeps the hinge transition stable.
+                    // The Find N6 cover is Compact (413dp), while its inner display lands in
+                    // Medium (813dp) depending on system-bar posture. Treating every
+                    // non-Compact window as unfolded keeps the hinge transition stable.
                     val layout = if (widthClass == WindowWidthSizeClass.Compact) {
                         PupilLayout.FOLDED
                     } else {
