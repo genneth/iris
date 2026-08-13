@@ -47,7 +47,7 @@ plugins {
 
 android {
     namespace = "io.github.genneth.pupil"
-    compileSdk = 36
+    compileSdk = 37
     experimentalProperties["android.experimental.enableScreenshotTest"] = true
 
     defaultConfig {
