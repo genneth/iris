@@ -5,12 +5,21 @@ project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 android_root="$project_root/android"
 sdk_root="${ANDROID_HOME:-/var/home/genneth/Android/Sdk}"
 adb_bin="$sdk_root/platform-tools/adb"
-emulator_bin="$sdk_root/emulator/emulator"
-avdmanager_bin="$sdk_root/cmdline-tools/latest/bin/avdmanager"
-avd_home="$project_root/target/android-avd"
-avd_name="pupil_closed_loop"
 loop_output="$project_root/target/android-loop"
-emulator_unit="pupil-android-emulator.service"
+
+# Pupil no longer owns an emulator. almon owns one shared, exclusively-leased
+# device (~/.local/bin/emulatorctl); this script takes a lease, works, and gives
+# it back. See ~/almon/tools/molly-android-dev/SKILL.md.
+#
+# Geometry must now be stated, never assumed. `wm size reset` used to mean
+# pupil's own 1080x2400 panel; on the shared device the physical panel is a
+# 2248x2616 superset, so a reset would silently hand Pupil a much larger screen
+# than it was ever laid out against.
+emulatorctl="${EMULATORCTL:-$HOME/.local/bin/emulatorctl}"
+lease_project=pupil
+geometry_folded=1080x2400
+geometry_unfolded=2292x2528
+lease_wait="${PUPIL_EMULATOR_WAIT:-300}"
 release_apk="$android_root/app/build/outputs/apk/release/app-release.apk"
 release_version_name="0.2.0"
 release_version_code="2"
@@ -25,109 +34,57 @@ adb_all() {
     run_dev "$adb_bin" "$@"
 }
 
+# The lease holder IS the device. No AVD-name matching any more: emulatorctl
+# owns exactly one device, so there is nothing to disambiguate against.
 emulator_serial() {
-    local serial running_avd
-    while read -r serial; do
-        running_avd=$(adb_all -s "$serial" emu avd name 2>/dev/null | head -1 | tr -d '\r')
-        if [[ "$running_avd" == "$avd_name" ]]; then
-            echo "$serial"
-            return
-        fi
-    done < <(adb_all devices 2>/dev/null | awk '/^emulator-[0-9]+[[:space:]]+device$/ { print $1 }')
+    "$emulatorctl" serial 2>/dev/null
 }
 
 adb() {
     local serial
     serial=$(emulator_serial)
     if [[ -z "$serial" ]]; then
-        echo 'No running Android emulator is available.' >&2
+        echo 'No leased Android device. Run `android-loop up` (or `start`) first.' >&2
         return 1
     fi
     adb_all -s "$serial" "$@"
-}
-
-ensure_avd() {
-    if [[ -f "$avd_home/$avd_name.avd/config.ini" && -f "$avd_home/$avd_name.ini" ]]; then
-        return
-    fi
-    mkdir -p "$avd_home"
-    printf 'no\n' | run_dev env ANDROID_HOME="$sdk_root" ANDROID_AVD_HOME="$avd_home" \
-        "$avdmanager_bin" create avd \
-        --force \
-        --name "$avd_name" \
-        --path "$avd_home/$avd_name.avd" \
-        --package 'system-images;android-36;google_apis;x86_64' \
-        --device pixel_7
 }
 
 emulator_running() {
     [[ -n "$(emulator_serial)" ]]
 }
 
-# The renderer default is `software`, and `host` is opt-in only.
+# Acquiring the shared device IS the renderer decision: emulatorctl launches
+# software rendering only, and does not carry a hardware-GPU path at all. That
+# is deliberate. On 2026-08-13 a `-no-window` emulator with `-gpu host` took a
+# hardware Vulkan context on the GPU the compositor draws on, deadlocked
+# restoring a snapshot, and froze the desktop for 29 minutes; the box needed a
+# hard reset. Pupil carried the identical default and was one invocation away
+# from the same outcome.
 #
-# This used to default to `host`. On 2026-08-13 shamoji's identical default took
-# a hardware Vulkan context on the RTX 4090 — the same GPU the GNOME compositor
-# draws on — and deadlocked restoring a snapshot, freezing the desktop for 29
-# minutes while the kernel ran fine. The box needed a hard reset. Pupil was one
-# invocation away from the same outcome.
-#
-# A `-no-window` emulator has no reason to hold a hardware context on the
-# compositor's GPU, and the host SELinux domain was verified against the
-# software path anyway (~/almon/layers/android.md). The rule now lives in
-# ~/almon and is enforced by conformance, not by comment.
+# Acquire also RESETS the device from almon's baseline snapshot, so a round never
+# inherits the previous holder's installs, geometry or reverse bindings. That is
+# stronger determinism than the cold boot this used to do, and much faster
+# (~8s including reset, against ~19s to cold boot).
 start_emulator() {
-    local renderer=${1:-software}
-    ensure_avd
-    if emulator_running || systemctl --user is-active --quiet "$emulator_unit"; then
-        echo 'Android emulator is already running.'
-        return
-    fi
-
+    local geometry="${1:-$geometry_folded}"
     mkdir -p "$loop_output"
-    systemctl --user reset-failed "$emulator_unit" 2>/dev/null || true
+    case "$geometry" in
+        folded)   geometry="$geometry_folded" ;;
+        unfolded) geometry="$geometry_unfolded" ;;
+        software|host)
+            echo "Renderer is not selectable any more: the shared device is software-only." >&2
+            echo "Pass a geometry instead (folded|unfolded|WxH), or nothing for folded." >&2
+            exit 2 ;;
+    esac
+    "$emulatorctl" acquire "$lease_project" \
+        --geometry "$geometry" --wait "$lease_wait" >/dev/null \
+        || { echo "Could not lease the shared device; try: emulatorctl status" >&2; exit 1; }
+    echo "Leased almon's shared device for $lease_project at $geometry."
+}
 
-    local environment=(--setenv="ANDROID_AVD_HOME=$avd_home")
-    local graphics=(-gpu swiftshader_indirect)
-    if [[ "$renderer" == host ]]; then
-        local display xauthority wayland_display
-        display=$(systemctl --user show-environment | sed -n 's/^DISPLAY=//p' | head -1)
-        xauthority=$(systemctl --user show-environment | sed -n 's/^XAUTHORITY=//p' | head -1)
-        wayland_display=$(systemctl --user show-environment | sed -n 's/^WAYLAND_DISPLAY=//p' | head -1)
-        if [[ -z "$display" || -z "$xauthority" ]]; then
-            echo 'The graphical session did not publish DISPLAY/XAUTHORITY; use the headless renderer.' >&2
-            exit 1
-        fi
-        environment+=(
-            --setenv="DISPLAY=$display"
-            --setenv="XAUTHORITY=$xauthority"
-            --setenv="WAYLAND_DISPLAY=$wayland_display"
-            --setenv=__GLX_VENDOR_LIBRARY_NAME=nvidia
-            --setenv=__NV_PRIME_RENDER_OFFLOAD=1
-            --setenv=__VK_LAYER_NV_optimus=NVIDIA_only
-            '--setenv=VK_LOADER_DRIVERS_SELECT=*nvidia*'
-        )
-        graphics=(-gpu host)
-    elif [[ "$renderer" != software ]]; then
-        echo 'Renderer must be host or software.' >&2
-        exit 2
-    fi
-
-    systemd-run --user \
-        --unit="$emulator_unit" \
-        --collect \
-        --quiet \
-        --property="WorkingDirectory=$project_root" \
-        "${environment[@]}" \
-        "$emulator_bin" \
-        -avd "$avd_name" \
-        -no-window \
-        -no-audio \
-        -no-boot-anim \
-        "${graphics[@]}" \
-        -no-snapshot-load \
-        -no-snapshot-save
-    echo "Started $avd_name with $renderer rendering and no window."
+release_emulator() {
+    "$emulatorctl" release "$lease_project"
 }
 
 wait_for_boot() {
@@ -142,7 +99,7 @@ wait_for_boot() {
         fi
         sleep 1
     done
-    echo "Android did not finish booting. Inspect: journalctl --user -u $emulator_unit" >&2
+    echo "Device did not finish booting. Inspect: emulatorctl status; journalctl --user -u almon-android-emulator" >&2
     exit 1
 }
 
@@ -232,31 +189,30 @@ capture() {
 
 case "${1:-}" in
     up)
-        start_emulator "${2:-software}"
+        start_emulator "${2:-folded}"
         install_debug_app
         adb shell dumpsys SurfaceFlinger | grep -m1 'GLES:'
         ;;
-    start) start_emulator "${2:-software}" ;;
+    start) start_emulator "${2:-folded}" ;;
     wait) wait_for_boot ;;
     install) install_debug_app ;;
     install-release) install_release_app ;;
     verify-release) build_release_app ;;
     test-ui) run_ui_tests ;;
     capture) capture "${2:-pupil}" ;;
-    folded) adb shell wm size reset ;;
-    unfolded) adb shell wm size 2292x2528 ;;
+    # Explicit, never `wm size reset`: reset now means almon's 2248x2616 superset
+    # panel, not pupil's old 1080x2400.
+    folded) adb shell wm size "$geometry_folded" ;;
+    unfolded) adb shell wm size "$geometry_unfolded" ;;
     renderer) adb shell dumpsys SurfaceFlinger | grep -m1 'GLES:' ;;
-    stop)
-        adb shell wm size reset 2>/dev/null || true
-        adb emu kill 2>/dev/null || true
-        systemctl --user stop "$emulator_unit" 2>/dev/null || true
-        ;;
+    stop) release_emulator ;;
     *)
         cat <<'USAGE'
 Usage: android/scripts/android-loop COMMAND
 
-  up [software|host]     start, build, install, and launch Pupil (software renderer default)
-  start [software|host]  start the project-local API 36 emulator without a window
+  up [folded|unfolded]   lease almon's shared device, build, install, launch Pupil
+  start [folded|unfolded] lease the shared device without building
+  stop                   release the lease (stops the shared device)
   wait                   wait for Android to finish booting
   install                build, install, and launch the debug APK on the emulator
   install-release        build, verify, replace, and launch the permanent-key release on the emulator
