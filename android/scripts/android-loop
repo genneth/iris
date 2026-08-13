@@ -64,8 +64,20 @@ emulator_running() {
     [[ -n "$(emulator_serial)" ]]
 }
 
+# The renderer default is `software`, and `host` is opt-in only.
+#
+# This used to default to `host`. On 2026-08-13 shamoji's identical default took
+# a hardware Vulkan context on the RTX 4090 — the same GPU the GNOME compositor
+# draws on — and deadlocked restoring a snapshot, freezing the desktop for 29
+# minutes while the kernel ran fine. The box needed a hard reset. Pupil was one
+# invocation away from the same outcome.
+#
+# A `-no-window` emulator has no reason to hold a hardware context on the
+# compositor's GPU, and the host SELinux domain was verified against the
+# software path anyway (~/almon/layers/android.md). The rule now lives in
+# ~/almon and is enforced by conformance, not by comment.
 start_emulator() {
-    local renderer=${1:-host}
+    local renderer=${1:-software}
     ensure_avd
     if emulator_running || systemctl --user is-active --quiet "$emulator_unit"; then
         echo 'Android emulator is already running.'
@@ -220,11 +232,11 @@ capture() {
 
 case "${1:-}" in
     up)
-        start_emulator "${2:-host}"
+        start_emulator "${2:-software}"
         install_debug_app
         adb shell dumpsys SurfaceFlinger | grep -m1 'GLES:'
         ;;
-    start) start_emulator "${2:-host}" ;;
+    start) start_emulator "${2:-software}" ;;
     wait) wait_for_boot ;;
     install) install_debug_app ;;
     install-release) install_release_app ;;
@@ -243,8 +255,8 @@ case "${1:-}" in
         cat <<'USAGE'
 Usage: android/scripts/android-loop COMMAND
 
-  up [host|software]     start, build, install, and launch Pupil (NVIDIA host is default)
-  start [host|software]  start the project-local API 36 emulator without a window
+  up [software|host]     start, build, install, and launch Pupil (software renderer default)
+  start [software|host]  start the project-local API 36 emulator without a window
   wait                   wait for Android to finish booting
   install                build, install, and launch the debug APK on the emulator
   install-release        build, verify, replace, and launch the permanent-key release on the emulator
