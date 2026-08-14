@@ -69,25 +69,58 @@ import androidx.compose.ui.unit.dp
  * it. `font_scale` is 1.0 and `fontWeightAdjustment` 0, which is what a preview
  * assumes by default, so nothing needs saying about type scale here.
  *
- * **`cutout=` and `navigation=` are set here and do nothing. Measured, not assumed.**
- * A preview rendering `WindowInsets.safeDrawing`, `statusBars`, `navigationBars` and
- * `displayCutout` reports **top=0 bottom=0 for every one of them**, with this spec.
- * The keys are accepted by the grammar and reach the configuration, but no inset is
- * synthesised and nothing is painted — a cutout is a hole in a panel, not pixels.
- * They are kept because they cost nothing, state what the device is, and would start
- * mattering for free if the renderer ever grew them. **Do not read them as coverage.**
- * The phone's cutout is 107px (38.7dp) tall on both panels: a centre punch-hole
- * folded, and unfolded a corner one at top **right**, since the inner panel is
- * mounted `installOrientation ROTATION_270` — exactly where an app bar's action
- * icons sit. No frame here will ever catch a collision with it.
+ * **`cutout=` is deliberately absent, and that took two measurements to get right.**
+ * The first said the key was inert: a preview reports `top=0 bottom=0` for
+ * `safeDrawing`, `statusBars`, `navigationBars` and `displayCutout` alike, at crop
+ * size and at full device size. That much is true and still is. But an A/B on the key
+ * itself — the same screen rendered with `cutout=punch_hole`, `cutout=none` and no
+ * keys — showed the screen's content starting at **y=136px** with the cutout and
+ * **y=0** without it. The key applies a hard **49.5dp** offset to the content that
+ * never appears in any `WindowInsets`, so an app cannot read it, respond to it or
+ * consume it; it just pushes everything down. And 49.5dp is the renderer's own idea
+ * of a punch hole, not haines' 38.7dp.
  *
- * **Zero insets is the trap that follows.** Because every inset resolves to 0, a
- * screen that consumes them is drawn in previews with nothing reserved: hartley's
- * `HartleyInsets.bar` and pupil's `safeDrawingPadding()` both collapse to nothing,
- * and their goldens sit content flush against an edge the phone gives 38.7dp of
- * status bar. The only way a frame can be honest about this is shamoji's shape —
- * take the insets as a parameter and hand the preview a real value — using
- * [HAINES_STATUS_BAR] and [HAINES_NAVIGATION_BAR] rather than a guess.
+ * So it was removed: it produced the exact blank band this profile exists to avoid,
+ * at the wrong size, in a form nothing can react to. `navigation=` was measured too
+ * and is genuinely inert — dropped as well, because a decorative key that reads as
+ * coverage is what caused this in the first place.
+ *
+ * The phone's cutout is 107px (38.7dp) on both panels: a centre punch-hole folded, a
+ * corner one at top **right** unfolded (the inner panel is mounted
+ * `installOrientation ROTATION_270`) — exactly where an app bar's action icons sit.
+ * **No frame here can catch a collision with it.** That is a device observation.
+ *
+ * **The frames are the app's content area, not the panel — and that is the point.**
+ * Because every inset resolves to 0, a screen that consumes them is drawn with
+ * nothing reserved. Reserving the space by hand was tried and rejected: a blank band
+ * at the top of a frame shows nothing an agent can judge, reads as a layout bug, and
+ * cannot show the one thing that would justify it — an app bar's background bleeding
+ * under the status bar — because with zero insets the bar draws flush anyway. A
+ * panel-height frame is not a frame with a status bar in it; it is a frame with 55dp
+ * of height the app does not have.
+ *
+ * So the heights below are the window minus the bars, and **everything in a frame is
+ * app**. Nothing has to be imagined and "does this fit above the fold?" is answered
+ * by the picture instead of by subtraction:
+ *
+ * ```
+ * folded     947 - 38.7 - 16.3  ->  413 x 892 dp
+ * unfolded   898 - 38.7 - 16.3  ->  814 x 843 dp
+ * ```
+ *
+ * The width is untouched because there are no side insets in portrait: both bars
+ * report `left=0 right=0`, and the cutout contributes nothing.
+ *
+ * This is also why **no app needs a preview-only seam**. A screen calling
+ * `windowInsetsPadding(safeDrawing)` or `safeDrawingPadding()` pads by zero and fills
+ * this frame exactly, which is correct by construction. Do not add an insets
+ * parameter to a production API to serve previews; shamoji had one and it was
+ * removed. [HAINES_STATUS_BAR] and [HAINES_NAVIGATION_BAR] exist to *derive the
+ * heights above*, not to be passed into a composable.
+ *
+ * What this gives up is nothing a frame could show today: a collision with the cutout
+ * and the bar's bleed under the status bar stay device observations, which is what
+ * they already were.
  *
  * **What is not in a frame and cannot be.** Rounded corners of 77px inner / 102px
  * cover (27.9dp / 36.9dp), so corner-adjacent content is clipped on glass and square
@@ -126,10 +159,10 @@ import androidx.compose.ui.unit.dp
  * `@PreviewTest` cannot be folded in here: its `allowedTargets` is `FUNCTION`, so it
  * stays at the call site. It carries no dimensions, so nothing is duplicated by it.
  */
-const val HAINES_FOLDED = "spec:width=413dp,height=947dp,dpi=442,cutout=punch_hole,navigation=gesture"
+const val HAINES_FOLDED = "spec:width=413dp,height=892dp,dpi=442"
 
 /** haines unfolded — see [HAINES_FOLDED] for why this is stated in dp. */
-const val HAINES_UNFOLDED = "spec:width=814dp,height=898dp,dpi=442,cutout=corner,navigation=gesture"
+const val HAINES_UNFOLDED = "spec:width=814dp,height=843dp,dpi=442"
 
 /**
  * The system-bar insets haines actually reports, from `dumpsys window`. **Measured
