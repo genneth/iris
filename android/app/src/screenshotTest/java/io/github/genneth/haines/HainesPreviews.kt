@@ -67,18 +67,31 @@ import androidx.compose.ui.tooling.preview.Preview
  * it. `font_scale` is 1.0 and `fontWeightAdjustment` 0, which is what a preview
  * assumes by default, so nothing needs saying about type scale here.
  *
- * **The cutout is real and is in the frames.** 107px tall (38.7dp) on both panels:
- * a centre punch-hole folded, and a corner cutout unfolded — top **right** on the
- * device, since the inner panel is mounted `installOrientation ROTATION_270`, which
- * is exactly where an app bar's action icons sit. Confirm at render time which
- * corner the renderer picks for `cutout=corner`; if it picks the left, the frames
- * are still more honest than no cutout at all, but say so rather than leaving it.
+ * **`cutout=` and `navigation=` are set here and do nothing. Measured, not assumed.**
+ * A preview rendering `WindowInsets.safeDrawing`, `statusBars`, `navigationBars` and
+ * `displayCutout` reports **top=0 bottom=0 for every one of them**, with this spec.
+ * The keys are accepted by the grammar and reach the configuration, but no inset is
+ * synthesised and nothing is painted — a cutout is a hole in a panel, not pixels.
+ * They are kept because they cost nothing, state what the device is, and would start
+ * mattering for free if the renderer ever grew them. **Do not read them as coverage.**
+ * The phone's cutout is 107px (38.7dp) tall on both panels: a centre punch-hole
+ * folded, and unfolded a corner one at top **right**, since the inner panel is
+ * mounted `installOrientation ROTATION_270` — exactly where an app bar's action
+ * icons sit. No frame here will ever catch a collision with it.
  *
- * **What is still not in a frame, and cannot be.** Rounded corners of 77px inner /
- * 102px cover (27.9dp / 36.9dp), so corner-adjacent content is clipped on glass and
- * square here. 120Hz, HDR to 2200 nits and a wide colour gamut, against sRGB
- * rendering. Those stay device observations, the same category as gestures and IME
- * panning — a golden that cannot show a thing must not be cited as covering it.
+ * **Zero insets is the trap that follows.** Because every inset resolves to 0, a
+ * screen that consumes them is drawn in previews with nothing reserved: hartley's
+ * `HartleyInsets.bar` and pupil's `safeDrawingPadding()` both collapse to nothing,
+ * and their goldens sit content flush against an edge the phone gives 38.7dp of
+ * status bar. The only way a frame can be honest about this is shamoji's shape —
+ * take the insets as a parameter and hand the preview a real value — using
+ * [HAINES_STATUS_BAR_PX] and [HAINES_NAVIGATION_BAR_PX] rather than a guess.
+ *
+ * **What is not in a frame and cannot be.** Rounded corners of 77px inner / 102px
+ * cover (27.9dp / 36.9dp), so corner-adjacent content is clipped on glass and square
+ * here. 120Hz, HDR to 2200 nits and a wide colour gamut, against sRGB rendering.
+ * Those stay device observations, the same category as gestures and IME panning — a
+ * golden that cannot show a thing must not be cited as covering it.
  *
  * **One 442 for two different panels.** The inner display is really 422.96 x 434.43
  * dpi and the cover display 445.48 x 455.11 — non-square pixels, ~5% apart — yet
