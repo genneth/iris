@@ -2,6 +2,8 @@ package io.github.genneth.haines
 
 import android.content.res.Configuration
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /**
  * **haines — the owner's phone, and the only device these apps are for.**
@@ -85,7 +87,7 @@ import androidx.compose.ui.tooling.preview.Preview
  * and their goldens sit content flush against an edge the phone gives 38.7dp of
  * status bar. The only way a frame can be honest about this is shamoji's shape —
  * take the insets as a parameter and hand the preview a real value — using
- * [HAINES_STATUS_BAR_PX] and [HAINES_NAVIGATION_BAR_PX] rather than a guess.
+ * [HAINES_STATUS_BAR] and [HAINES_NAVIGATION_BAR] rather than a guess.
  *
  * **What is not in a frame and cannot be.** Rounded corners of 77px inner / 102px
  * cover (27.9dp / 36.9dp), so corner-adjacent content is clipped on glass and square
@@ -130,14 +132,23 @@ const val HAINES_FOLDED = "spec:width=413dp,height=947dp,dpi=442,cutout=punch_ho
 const val HAINES_UNFOLDED = "spec:width=814dp,height=898dp,dpi=442,cutout=corner,navigation=gesture"
 
 /**
- * The system-bar insets haines actually reports, in pixels at 442dpi — 38.7dp top,
- * 16.3dp bottom. A preview renders with **no** insets, so a screen that consumes
- * them has to be handed a value, and a guessed one is a UI validated against
- * nothing: shamoji carried 32dp/24dp by hand, over-reserving the gesture bar by 8dp
- * and under-reserving the status bar by 7dp.
+ * The system-bar insets haines actually reports, from `dumpsys window`. **Measured
+ * in both postures on 2026-08-14 and identical in each** — folded `statusBars
+ * [0,0][1140,107]` / `navigationBars [0,2571][1140,2616]`, unfolded
+ * `[0,0][2248,107]` / `[0,2435][2248,2480]` — so one pair of constants serves the
+ * whole device. That was the expected answer and was still worth reading off the
+ * phone; "obviously the same" is the reasoning that produced 948 and 813.
  *
- * Kept in pixels because that is how the phone reports them; convert with
- * [HAINES_DENSITY_DPI] at the point of use rather than writing a dp figure down.
+ * They exist because **a preview renders with no insets at all** — every one of
+ * `safeDrawing`, `statusBars`, `navigationBars` and `displayCutout` reports zero, so
+ * a screen that consumes insets is drawn in a golden with nothing reserved unless it
+ * is handed a value. A guessed value is no better: shamoji carried 32dp/24dp by
+ * hand, under-reserving the status bar by 7dp and over-reserving the gesture bar by
+ * 8dp.
+ *
+ * Kept in pixels because that is how the phone reports them. Use [HAINES_STATUS_BAR]
+ * / [HAINES_NAVIGATION_BAR] rather than writing a dp figure down anywhere: the
+ * conversion below is evaluated, so unlike a transcribed number it cannot drift.
  */
 const val HAINES_STATUS_BAR_PX = 107
 
@@ -146,6 +157,12 @@ const val HAINES_NAVIGATION_BAR_PX = 45
 
 /** haines' override density, for converting the two constants above. */
 const val HAINES_DENSITY_DPI = 442
+
+/** [HAINES_STATUS_BAR_PX] in dp — 38.7dp. Hand a preview this, never a guess. */
+val HAINES_STATUS_BAR: Dp = (HAINES_STATUS_BAR_PX * 160f / HAINES_DENSITY_DPI).dp
+
+/** [HAINES_NAVIGATION_BAR_PX] in dp — 16.3dp. */
+val HAINES_NAVIGATION_BAR: Dp = (HAINES_NAVIGATION_BAR_PX * 160f / HAINES_DENSITY_DPI).dp
 
 /** haines, folded. A full-screen frame; states no dimensions of its own. */
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
