@@ -1,9 +1,10 @@
 package io.github.genneth.pupil
 
-import android.content.res.Configuration
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
+import io.github.genneth.haines.HainesFolded
+import io.github.genneth.haines.HainesUnfolded
+import io.github.genneth.haines.HainesUnfoldedDark
 
 private const val SENSOR_REPORT = """wakeup ALS: none
 default ALS: OPLUS Fusion Light Sensor Next Gen
@@ -11,14 +12,14 @@ default ALS: OPLUS Fusion Light Sensor Next Gen
   fifoMax=0 isWakeUp=false"""
 
 @PreviewTest
-@Preview(name = "Find N6 folded ready", widthDp = 413, heightDp = 948, showBackground = true)
+@HainesFolded
 @Composable
 fun FoldedReadyPreview() {
     PreviewScreen(PupilLayout.FOLDED, PupilUiState())
 }
 
 @PreviewTest
-@Preview(name = "Find N6 folded broadcasting", widthDp = 413, heightDp = 948, showBackground = true)
+@HainesFolded
 @Composable
 fun FoldedBroadcastingPreview() {
     PreviewScreen(
@@ -32,7 +33,7 @@ fun FoldedBroadcastingPreview() {
 }
 
 @PreviewTest
-@Preview(name = "Find N6 unfolded broadcasting", widthDp = 813, heightDp = 898, showBackground = true)
+@HainesUnfolded
 @Composable
 fun UnfoldedBroadcastingPreview() {
     PreviewScreen(
@@ -46,13 +47,7 @@ fun UnfoldedBroadcastingPreview() {
 }
 
 @PreviewTest
-@Preview(
-    name = "Find N6 unfolded failure dark",
-    widthDp = 813,
-    heightDp = 898,
-    showBackground = true,
-    uiMode = Configuration.UI_MODE_NIGHT_YES,
-)
+@HainesUnfoldedDark
 @Composable
 fun UnfoldedFailureDarkPreview() {
     PupilTheme(darkTheme = true, dynamicColor = false) {
