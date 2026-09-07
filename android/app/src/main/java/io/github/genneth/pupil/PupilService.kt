@@ -11,6 +11,7 @@ import android.bluetooth.le.AdvertisingSet
 import android.bluetooth.le.AdvertisingSetCallback
 import android.bluetooth.le.AdvertisingSetParameters
 import android.bluetooth.le.BluetoothLeAdvertiser
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -25,6 +26,7 @@ import android.os.ParcelUuid
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
+import android.service.quicksettings.TileService
 import androidx.core.app.NotificationCompat
 
 /**
@@ -91,6 +93,7 @@ class PupilService : Service(), SensorEventListener {
                 PupilState.update {
                     it.copy(status = BroadcastStatus.Broadcasting(sensorDescription))
                 }
+                pushTileUpdate()
                 sendNow()
             } else {
                 fail("BLE advertising could not start (status $status).")
@@ -105,6 +108,7 @@ class PupilService : Service(), SensorEventListener {
             advertisingSet = null
             if (!stopping && PupilState.state.value.status.isActive) {
                 PupilState.update { it.copy(status = BroadcastStatus.Starting) }
+                pushTileUpdate()
                 handler.postDelayed({ startAdvertising() }, 1000)
             }
         }
@@ -163,6 +167,7 @@ class PupilService : Service(), SensorEventListener {
         startForeground(NOTIFICATION_ID, buildNotification("starting…"))
         stopping = false
         PupilState.update { it.copy(status = BroadcastStatus.Starting) }
+        pushTileUpdate()
         if (!acquireSensor()) return START_NOT_STICKY
         startAdvertising()
         handler.postDelayed(heartbeat, heartbeatMs)
@@ -307,6 +312,7 @@ class PupilService : Service(), SensorEventListener {
         PupilState.update { state ->
             if (state.status is BroadcastStatus.Failed) state else state.copy(status = BroadcastStatus.Stopped)
         }
+        pushTileUpdate()
         handler.removeCallbacksAndMessages(null)
         sensorManager?.unregisterListener(this)
         wakeLock?.release()
@@ -323,6 +329,15 @@ class PupilService : Service(), SensorEventListener {
     private fun fail(message: String) {
         Log.e(TAG, message)
         PupilState.update { it.copy(status = BroadcastStatus.Failed(message)) }
+        pushTileUpdate()
         stopSelf()
+    }
+
+    /** Active tile: wake it so it repaints from live state even while QS is closed. */
+    private fun pushTileUpdate() {
+        TileService.requestListeningState(
+            applicationContext,
+            ComponentName(this, PupilTileService::class.java),
+        )
     }
 }

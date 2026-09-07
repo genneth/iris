@@ -1,8 +1,6 @@
 package io.github.genneth.pupil
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.PowerManager
@@ -155,10 +153,5 @@ class MainActivity : ComponentActivity() {
     private fun isBatteryExempt(): Boolean =
         (getSystemService(POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName)
 
-    private fun missingPermissions(): List<String> {
-        val wanted = arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.POST_NOTIFICATIONS)
-        return wanted.filter {
-            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
-        }
-    }
+    private fun missingPermissions(): List<String> = missingStartPermissions(this)
 }
