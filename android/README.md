@@ -56,20 +56,18 @@ produces an unsigned release, but cannot produce an official APK. Pupil's perman
 
     654746ec3c14cac3498052ac5cf7d7a8a02b87a85cdcd96cd9a19d938b99c6e5
 
-Build and export version 0.2.0 with:
+Build and export version 0.3.0 with:
 
     android/scripts/android-loop verify-release
 
 The command removes any stale signed output before building, then refuses the result unless it is
-non-debuggable, version code 2, signed by exactly that certificate, and carries a v3 signature. A
-successful run exports `android/dist/pupil-0.2.0-release.apk` plus its SHA-256 file. To exercise the
+non-debuggable, version code 3, signed by exactly that certificate, and carries a v3 signature. A
+successful run exports `android/dist/pupil-0.3.0-release.apk` plus its SHA-256 file. To exercise the
 shrunk artifact on the disposable emulator, use `install-release`.
 
-The Find N6 currently has the historical debug-key build. Android cannot update it with the
-permanent key, so the first 0.2.0 phone installation requires one explicit uninstall. That loses
-Pupil's four local settings and all OS/ColorOS treatment associated with the old install: repeat the
-survival checklist below, then repeat the locked-screen torch/freshness test. The emulator loop
-never automates or targets this physical-phone migration.
+The Find N6 was migrated from the historical debug-key build to the permanent key with 0.2.0 (one
+explicit uninstall, now done). Later versions update in place over it. The emulator loop never
+automates or targets this physical-phone migration.
 
 ## ColorOS survival checklist (do all of these once)
 

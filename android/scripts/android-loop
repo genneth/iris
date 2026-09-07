@@ -37,8 +37,8 @@ geometry_unfolded=2248x2480
 density=442
 lease_wait="${PUPIL_EMULATOR_WAIT:-300}"
 release_apk="$android_root/app/build/outputs/apk/release/app-release.apk"
-release_version_name="0.2.0"
-release_version_code="2"
+release_version_name="0.3.0"
+release_version_code="3"
 release_dist="$android_root/dist/pupil-$release_version_name-release.apk"
 release_cert_sha256="654746ec3c14cac3498052ac5cf7d7a8a02b87a85cdcd96cd9a19d938b99c6e5"
 
@@ -233,7 +233,7 @@ Usage: android/scripts/android-loop COMMAND
   wait                   wait for Android to finish booting
   install                build, install, and launch the debug APK on the emulator
   install-release        build, verify, replace, and launch the permanent-key release on the emulator
-  verify-release         build, verify, and export the signed 0.2.0 release
+  verify-release         build, verify, and export the signed 0.3.0 release
   test-ui                run Compose interaction tests on the emulator
   capture [name]         save a screenshot and UI hierarchy under target/android-loop
   folded                 restore the Find N6 folded display (413dp wide)
