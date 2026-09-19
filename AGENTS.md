@@ -18,28 +18,23 @@ Auto-brightness for this laptop from a real ambient-light measurement taken by t
 It is not optional background. The rules it carries have already been learned the hard way on this
 machine, and they bind this repo:
 
-- **Never let a headless emulator take the host GPU.** Pupil's launcher used to default to
-  `-gpu host`; the identical default in a sibling project deadlocked the GPU the compositor draws
-  on and cost a hard reset on 2026-08-13. `scripts/android-loop` now defaults to software, and
-  conformance fails if that regresses.
-- **Toolchain versions are allocated by almon**, not chosen here. Gradle, AGP, the Compose plugin
-  and `compileSdk` must match `~/almon/conformance/intent.py` → `ANDROID_TOOLCHAIN`. Do not bump
-  one project alone — that is how this repo ended up on its own Gradle version, forking a second
-  3 GB daemon and skipping a shared build cache.
-- **`~/.gradle/gradle.properties` overrides `android/gradle.properties`** for `jvmargs`,
-  `caching`, `workers.max` and `daemon.idletimeout`. Editing those here has no effect on molly.
-  The header in that file says so.
-- **Kotlin comes from the Compose plugin, not AGP.** Never add a `buildscript` classpath override
-  for `kotlin-gradle-plugin`; this repo carried one until 2026-08-13 and it skewed KGP against the
-  Compose compiler rather than pinning anything.
-- **One emulator at a time.** `user-1000.slice` is capped at 24 G and an emulator peaks at 6–9 GB.
+- **Software rendering only.** `scripts/android-loop` leases Almon's shared emulator;
+  it cannot select a host GPU or launch a project-owned AVD.
+- **Toolchain versions are allocated by almon**, not chosen here. Follow
+  `~/almon/conformance/intent.py` → `ANDROID_TOOLCHAIN`, including the paired
+  Kotlin and Compose pins. Change all consumers together through Almon.
+- **`~/.gradle/gradle.properties` overrides the project file** for host-owned JVM,
+  worker and caching policy; see the shared skill before changing these settings.
+- **One emulator at a time.** Preserve the controller's lease token and pass it
+  on every device lookup and release. Never bypass a missing or superseded token.
+  The shared skill owns the memory policy and recovery procedure.
 
 Verify Android changes with `~/almon/conformance/check -k android` — it must be green.
 
 ## The closed loop
 
 ```bash
-android/scripts/android-loop up [software|host]     # software is the default, and should stay so
+android/scripts/android-loop up [folded|unfolded]   # shared software-rendered emulator
 android/scripts/android-loop --help
 ./dev.sh android                                    # project entry point
 ```

@@ -19,7 +19,7 @@ loop_output="$project_root/target/android-loop"
 # The owner has exactly one phone: a Find N6 foldable. Its real panel,
 # measured with `dumpsys display` on 2026-08-08 (see
 # ~/hartley/docs/superpowers/specs/2026-08-08-hartley-typography.md), is
-# 1140x2616 folded / 2248x2480 unfolded at density 442 (413dp / 813dp wide).
+# 1140x2616 folded / 2248x2480 unfolded at density 442 (413dp / 814dp wide).
 # 1080x2400 / 2292x2528 @420 were pixel_7 AVD template leftovers, never
 # corrected, and were validating pupil's UI against a device nobody owns.
 #
@@ -32,6 +32,19 @@ loop_output="$project_root/target/android-loop"
 # mismatch with almon's table).
 emulatorctl="${EMULATORCTL:-$HOME/.local/bin/emulatorctl}"
 lease_project=pupil
+# One file identifies one workflow across separate start/capture/stop commands.
+# Independent sessions in the same checkout must choose distinct files.
+lease_token_file="${PUPIL_EMULATOR_LEASE_FILE:-$loop_output/lease-token}"
+lease_token=""
+case "${1:-}" in
+    up|start|wait|install|install-release|test-ui|capture|folded|unfolded|renderer|stop)
+        mkdir -p "$(dirname "$lease_token_file")"
+        exec 9>"$lease_token_file.lock"
+        flock -n 9 || { echo 'Another command is using this emulator lease file.' >&2; exit 1; }
+        # Snapshot once: another session must never silently replace our identity.
+        [[ ! -s "$lease_token_file" ]] || lease_token=$(<"$lease_token_file")
+        ;;
+esac
 geometry_folded=1140x2616
 geometry_unfolded=2248x2480
 density=442
@@ -43,37 +56,36 @@ release_dist="$android_root/dist/pupil-$release_version_name-release.apk"
 release_cert_sha256="654746ec3c14cac3498052ac5cf7d7a8a02b87a85cdcd96cd9a19d938b99c6e5"
 
 run_dev() {
-    toolbox run -c dev "$@"
+    toolbox run -c dev "$@" 9>&-
 }
 
 adb_all() {
     run_dev "$adb_bin" "$@"
 }
 
-# The lease holder IS the device. No AVD-name matching any more: emulatorctl
-# owns exactly one device, so there is nothing to disambiguate against.
+require_lease_token() {
+    if [[ ! "$lease_token" =~ ^[A-Za-z0-9]+$ ]]; then
+        echo 'No valid lease token. Run `android-loop start` (or `up`) first.' >&2
+        return 1
+    fi
+}
+
 emulator_serial() {
-    "$emulatorctl" serial 2>/dev/null
+    require_lease_token || return 1
+    "$emulatorctl" serial "$lease_project" --lease "$lease_token" 9>&-
 }
 
 adb() {
     local serial
-    serial=$(emulator_serial)
-    if [[ -z "$serial" ]]; then
-        echo 'No leased Android device. Run `android-loop up` (or `start`) first.' >&2
-        return 1
-    fi
+    serial=$(emulator_serial) || return 1
+    [[ -n "$serial" ]] || { echo 'The leased emulator has no serial.' >&2; return 1; }
     adb_all -s "$serial" "$@"
-}
-
-emulator_running() {
-    [[ -n "$(emulator_serial)" ]]
 }
 
 # Acquiring the shared device IS the renderer decision: emulatorctl launches
 # software rendering only, and does not carry a hardware-GPU path at all. That
 # is deliberate. On 2026-08-13 a `-no-window` emulator with `-gpu host` took a
-# hardware Vulkan context on the GPU the compositor draws on, deadlocked
+# hardware Vulkan context on the RTX 4090, deadlocked
 # restoring a snapshot, and froze the desktop for 29 minutes; the box needed a
 # hard reset. Pupil carried the identical default and was one invocation away
 # from the same outcome.
@@ -93,23 +105,47 @@ start_emulator() {
             echo "Pass a geometry instead (folded|unfolded|WxH), or nothing for folded." >&2
             exit 2 ;;
     esac
-    "$emulatorctl" acquire "$lease_project" \
-        --geometry "$geometry" --density "$density" --wait "$lease_wait" >/dev/null \
-        || { echo "Could not lease the shared device; try: emulatorctl status" >&2; exit 1; }
+    local acquire_log token token_tmp
+    local lease_args=()
+    if [[ -n "$lease_token" ]]; then
+        require_lease_token || return 1
+        lease_args=(--lease "$lease_token")
+    fi
+    # The controller announces new tokens on stderr; renewals retain our token.
+    if ! acquire_log=$("$emulatorctl" acquire "$lease_project" "${lease_args[@]}" \
+        --geometry "$geometry" --density "$density" --wait "$lease_wait" 9>&- 2>&1 >/dev/null); then
+        printf '%s\n' "$acquire_log" >&2
+        return 1
+    fi
+    printf '%s\n' "$acquire_log" >&2
+    token=$(sed -n 's/.*lease token: \([A-Za-z0-9]\{1,\}\).*/\1/p' <<<"$acquire_log")
+    lease_token="${token:-$lease_token}"
+    # No project-only fallback, including controllers that omit the token.
+    require_lease_token || return 1
+    emulator_serial >/dev/null || return 1
+    token_tmp=$(mktemp "$lease_token_file.XXXXXX")
+    printf '%s\n' "$lease_token" > "$token_tmp"
+    mv -f -- "$token_tmp" "$lease_token_file"
     echo "Leased almon's shared device for $lease_project at $geometry@${density}dpi."
 }
 
 release_emulator() {
-    "$emulatorctl" release "$lease_project"
+    require_lease_token || return 1
+    "$emulatorctl" release "$lease_project" --lease "$lease_token" 9>&- || return 1
+    rm -f -- "$lease_token_file"
 }
 
 wait_for_boot() {
+    local attempt serial state boot
     for attempt in {1..90}; do
-        local state boot
-        state=$(adb get-state 2>/dev/null || true)
-        boot=$(adb shell getprop sys.boot_completed 2>/dev/null || true)
+        # Transport readiness may be retried; lost ownership must fail immediately.
+        serial=$(emulator_serial) || return 1
+        state=$(adb_all -s "$serial" get-state 2>/dev/null || true)
+        serial=$(emulator_serial) || return 1
+        boot=$(adb_all -s "$serial" shell getprop sys.boot_completed 2>/dev/null || true)
         boot=${boot//$'\r'/}
         if [[ "$state" == device && "$boot" == 1 ]]; then
+            emulator_serial >/dev/null || return 1
             echo "Android booted after at most ${attempt}s."
             return
         fi
@@ -237,9 +273,8 @@ Usage: android/scripts/android-loop COMMAND
   test-ui                run Compose interaction tests on the emulator
   capture [name]         save a screenshot and UI hierarchy under target/android-loop
   folded                 restore the Find N6 folded display (413dp wide)
-  unfolded               emulate the Find N6 813dp unfolded width
+  unfolded               emulate the Find N6 814dp unfolded width
   renderer               print the renderer Android is actually using
-  stop                   reset the display and stop the emulator
 USAGE
         exit 2
         ;;

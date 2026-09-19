@@ -14,10 +14,10 @@ single column folded, two-pane on the Find N6's unfolded inner display).
     toolbox run -c dev bash -lc 'cd ~/iris/android && ./gradlew :app:assembleDebug'
     toolbox run -c dev bash -lc 'cd ~/iris/android && ~/Android/Sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk'
 
-Toolchain (all in the `dev` toolbox): AGP 9.2.0 / Gradle wrapper 9.6.1 / Kotlin
-2.3.21 (AGP built-in) / compileSdk+targetSdk 36. Runs on the toolbox's dnf
-`java-25-openjdk` — no `JAVA_HOME` prefix. Android SDK at `~/Android/Sdk`
-(platforms;android-36, build-tools;36.0.0). Unit tests: `./dev.sh android`.
+Toolchain versions are allocated in `~/almon/conformance/intent.py` →
+`ANDROID_TOOLCHAIN`; the project's Gradle files declare those versions. Java and
+native build prerequisites belong to the managed `dev` Toolbx recipe. The Android
+SDK lives at `~/Android/Sdk`. Read the host-wide Android skill before building.
 
 `./dev.sh android` is the local Android gate: generated/property unit tests, Android lint, and
 deterministic Compose screenshots at the Find N6's folded and unfolded dimensions. It runs in
@@ -30,12 +30,18 @@ windows use the folded single-column instrument; Medium and Expanded windows use
 two-pane workspace. This deliberately handles the inner display reporting roughly 814–873 dp as
 system bars and posture change.
 
-The project-local loop uses a disposable API 36 AVD under `target/`, selects it by both
-`emulator-*` serial and AVD name, and can emulate both widths without touching a connected phone.
-It uses the same proven rendering path as Shamoji and Hartley: NVIDIA host rendering inside QEMU's
-`-no-window` headless binary. The emulator uses Xwayland only as its EGL bridge—this installed build
-has no native Wayland headless renderer—but Qt never creates a window, so nothing opens or flashes
-in the desktop session. `start software` retains the established SwiftShader compatibility fallback.
+The project-local loop leases Almon's shared, software-rendered emulator through
+`emulatorctl`. It uses the saved Pupil lease token to select the device; missing,
+expired or superseded ownership stops the command instead of touching another
+project's emulator. It never selects a connected phone.
+
+The token lives in `target/android-loop/lease-token`. Commands using that file
+form one workflow and cannot run concurrently. For independent sessions in the
+same checkout, set `PUPIL_EMULATOR_LEASE_FILE` to a distinct path per session and
+keep that setting for every command in the session. `start`/`up` acquires or renews
+that workflow; `stop` releases it and removes its token. Acquiring resets the
+shared device from Almon's baseline even when renewing. Check ownership errors
+before deciding to acquire again: another session may now be using the device.
 
     android/scripts/android-loop up
     android/scripts/android-loop capture folded-ready
@@ -43,6 +49,10 @@ in the desktop session. `start software` retains the established SwiftShader com
     android/scripts/android-loop capture unfolded-ready
     android/scripts/android-loop test-ui
     android/scripts/android-loop stop
+
+Lease regression tests use a fake controller and Toolbx, without starting an emulator:
+
+    uv run android/scripts/test_android_loop.py
 
 The emulator closes the build, interaction, adaptive-layout and release-shrinker loop. It cannot
 prove the real Find N6's ALS, BLE controller, Doze or ColorOS behaviour; the screen-off torch test
